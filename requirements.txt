@@ -7,3 +7,4 @@ typer[all]
 streamlit
 jupyter
 duckdb
+plotly
