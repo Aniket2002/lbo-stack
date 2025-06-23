@@ -7,6 +7,7 @@ import json
 from pathlib import Path
 from src.modules.lbo_model import LBOModel
 from src.modules.sensitivity import run_sensitivity, export_results, run_2d_sensitivity
+from src.modules.fund_waterfall import summarize_waterfall, compute_waterfall_by_year
 
 app = typer.Typer()
 
@@ -40,6 +41,65 @@ def sensitivity(
     results = run_sensitivity(params, param, vals, years)
     export_results(results, str(output))
     print(f"Saved results to {output}")
+
+
+
+@app.command()
+def waterfall(
+    config: Path,
+    output_csv: Path = Path("output/fund_waterfall.csv")
+):
+    """
+    Run a fund waterfall simulation from a config JSON.
+    """
+    data = json.loads(config.read_text())
+
+    tiers = data.get("tiers", [{"hurdle": 0.08, "carry": 0.20}])
+    capital_calls = data["capital_calls"]
+    distributions = data["distributions"]
+    committed_capital = data["committed_capital"]
+
+    gp_commitment = data.get("gp_commitment", 0.02)
+    mgmt_fee_pct = data.get("mgmt_fee_pct", 0.02)
+    reset_hurdle = data.get("reset_hurdle", False)
+    cashless = data.get("cashless", False)
+
+    # Run year-wise breakdown
+    rows = compute_waterfall_by_year(
+        committed_capital=committed_capital,
+        capital_calls=capital_calls,
+        distributions=distributions,
+        tiers=tiers,
+        gp_commitment=gp_commitment,
+        mgmt_fee_pct=mgmt_fee_pct,
+        reset_hurdle=reset_hurdle,
+        cashless=cashless
+    )
+
+    # Print summary
+    summary = summarize_waterfall(
+        committed_capital=committed_capital,
+        capital_calls=capital_calls,
+        distributions=distributions,
+        tiers=tiers,
+        gp_commitment=gp_commitment,
+        mgmt_fee_pct=mgmt_fee_pct,
+        reset_hurdle=reset_hurdle,
+        cashless=cashless
+    )
+
+    print("\n🎯 Fund Return Summary:")
+    for k, v in summary.items():
+        print(f"{k}: {v:,.2f}" if isinstance(v, float) else f"{k}: {v}")
+
+    # Save to CSV
+    import pandas as pd
+    df = pd.DataFrame(rows)
+    output_csv.parent.mkdir(parents=True, exist_ok=True)
+    df.to_csv(output_csv, index=False)
+    print(f"\n📤 Saved detailed waterfall to {output_csv}")
+
+
 
 @app.command()
 def grid(

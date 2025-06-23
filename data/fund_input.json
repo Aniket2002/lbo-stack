@@ -1,0 +1,13 @@
+{
+  "committed_capital": 100000000,
+  "capital_calls": [30000000, 30000000, 20000000, 10000000, 0],
+  "distributions": [0, 0, 0, 0, 160000000],
+  "tiers": [
+    {"hurdle": 0.08, "carry": 0.2},
+    {"hurdle": 0.12, "carry": 0.3}
+  ],
+  "gp_commitment": 0.02,
+  "mgmt_fee_pct": 0.02,
+  "reset_hurdle": false,
+  "cashless": false
+}
