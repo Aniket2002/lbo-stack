@@ -8,3 +8,5 @@ streamlit
 jupyter
 duckdb
 plotly
+markdown2 
+weasyprint

@@ -3,6 +3,8 @@ import pandas as pd
 import plotly.graph_objects as go
 import json
 import io
+import markdown2
+from weasyprint import HTML
 
 from src.modules.fund_waterfall import summarize_waterfall, compute_waterfall_by_year
 from src.modules.lbo_model import LBOModel
@@ -68,12 +70,19 @@ def generate_memo(summary, table, scenario_name=""):
     memo.write(df.to_markdown(index=False))
     return memo.getvalue()
 
+# 🔄 Convert Markdown to PDF
+def convert_md_to_pdf(md_content):
+    html = markdown2.markdown(md_content)
+    pdf_file = io.BytesIO()
+    HTML(string=html).write_pdf(pdf_file)
+    return pdf_file.getvalue()
+
 # ========================
 # 📊 Preset Definitions
 # ========================
 preset_cases = {
     "Base Case": {
-        "rev_growth": 0.10,
+        "rev_growth": 0.10,  # Revenue growth rate
         "exit_mult": 8.0,
         "calls": [30e6, 30e6, 20e6, 10e6, 0],
         "dists": [0, 0, 0, 0, 160e6],
@@ -145,8 +154,32 @@ summary = summarize_waterfall(
     cashless=False
 )
 
+# 🔽 Export memo
 memo = generate_memo(summary, waterfall_table, scenario_name=chosen)
 st.download_button("📥 Download Memo (.md)", memo, file_name=f"{chosen}_memo.md")
+
+pdf_data = convert_md_to_pdf(memo)
+st.download_button("📄 Download Memo as PDF", data=pdf_data, file_name=f"{chosen}_memo.pdf", mime="application/pdf")
+
+# ========================
+# 📊 Enhanced Waterfall Chart
+# ========================
+st.markdown("### 📈 LP + GP Share by Year (with Totals)")
+df = pd.DataFrame(waterfall_table)
+df["Total"] = df["LP Share"] + df["GP Share"]
+fig = go.Figure()
+fig.add_trace(go.Bar(x=df["Year"], y=df["LP Share"], name="LP Share"))
+fig.add_trace(go.Bar(x=df["Year"], y=df["GP Share"], name="GP Share"))
+fig.add_trace(go.Scatter(x=df["Year"], y=df["Total"], name="Total", mode="lines+markers"))
+fig.update_layout(
+    barmode="stack",
+    xaxis_title="Year",
+    yaxis_title="Distributions",
+    yaxis_tickprefix="$",
+    template="ggplot2",
+    legend_title="Components"
+)
+st.plotly_chart(fig, use_container_width=True)
 
 # ========================
 # 📎 Footer
