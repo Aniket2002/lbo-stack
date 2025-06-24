@@ -10,3 +10,6 @@ duckdb
 plotly
 markdown2 
 weasyprint
+libgobject
+tabulate
+pydantic
