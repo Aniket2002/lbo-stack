@@ -34,21 +34,12 @@ class DebtTranche:
         self.balance = principal
 
     def charge_interest(self) -> float:
-        interest_due = self.balance * self.rate
+        """Charge interest; if PIK, capitalize instead of cash-pay."""
+        interest = self.balance * self.rate
         if self.pik:
-            # PIK: capitalize interest instead of cash pay
-            self.balance += interest_due
+            self.balance += interest
             return 0.0
-        return interest_due
-
-    def repay_principal(self, cash_available: float, year_idx: int) -> float:
-        """Repay scheduled principal for this tranche."""
-        if self.amort_schedule and year_idx < len(self.amort_schedule):
-            due = self.amort_schedule[year_idx]
-            paid = min(due, cash_available)
-            self.balance -= paid
-            return paid
-        return 0.0
+        return interest
 
     def draw(self, amount: float) -> float:
         """Draw from revolver up to its limit to cover shortfalls."""
@@ -85,7 +76,7 @@ class LBOModel:
         ltv_hurdle: Optional[float] = None,
         cash_sweep_pct: float = 1.0
     ):
-        # Core deal assumptions
+        # Base deal assumptions
         self.enterprise_value = enterprise_value
         self.revenue0 = revenue
         self.rev_growth = rev_growth
@@ -104,25 +95,23 @@ class LBOModel:
         amort_schedule = [amort_amt / 5] * 5
 
         self.debt_tranches: List[DebtTranche] = [
-            DebtTranche("Bullet", principal=bullet_amt, rate=interest_rate),
-            DebtTranche("Amortizing", principal=amort_amt, rate=interest_rate, amort_schedule=amort_schedule)
+            DebtTranche("Bullet", bullet_amt, interest_rate),
+            DebtTranche("Amortizing", amort_amt, interest_rate, amort_schedule=amort_schedule)
         ]
         if revolver_limit > 0:
-            # Revolver starts at zero drawn
             self.debt_tranches.append(
-                DebtTranche("Revolver", principal=0.0, rate=revolver_rate,
-                            revolver=True, revolver_limit=revolver_limit)
+                DebtTranche("Revolver", 0.0, revolver_rate, revolver=True, revolver_limit=revolver_limit)
             )
         if pik_rate > 0:
             self.debt_tranches.append(
-                DebtTranche("PIK", principal=0.0, rate=pik_rate, pik=True)
+                DebtTranche("PIK", 0.0, pik_rate, pik=True)
             )
 
-        # Covenant thresholds
+        # Covenants
         self.icr_hurdle = icr_hurdle
         self.ltv_hurdle = ltv_hurdle
 
-        # Equity investment
+        # Equity
         self.equity = enterprise_value - total_debt
 
     def run(self, years: int = 5, exit_year: Optional[int] = None) -> Dict[str, Any]:
@@ -131,19 +120,22 @@ class LBOModel:
         irr_cf: List[float] = [-self.equity]
 
         revenue = self.revenue0
-        wc_prev  = revenue * self.wc_pct
+        wc_prev = revenue * self.wc_pct
+
+        # Determine if revolver tranche exists
+        has_revolver = any(t.revolver for t in self.debt_tranches)
 
         for year in range(1, years + 1):
-            # 1. Revenue & EBITDA
+            # 1) Revenue & EBITDA
             if year > 1:
                 revenue *= (1 + self.rev_growth)
             ebitda = revenue * self.ebitda_margin
 
-            # 2. Depreciation & EBIT
+            # 2) Depreciation & EBIT
             da   = revenue * self.da_pct
             ebit = ebitda - da
 
-            # 3. Charge interest (PIK capitalizes)
+            # 3) Interest (PIK capitalizes)
             total_interest = sum(t.charge_interest() for t in self.debt_tranches)
 
             # ICR covenant
@@ -152,46 +144,56 @@ class LBOModel:
                 if icr < self.icr_hurdle:
                     raise CovenantBreachError(f"Year {year}: ICR {icr:.2f} below {self.icr_hurdle}")
 
-            # 4. Tax
+            # 4) Tax
             ebt = ebit - total_interest
             tax = max(0.0, ebt * self.tax_rate)
 
-            # 5. NOPAT & Unlevered FCF
-            nopat   = ebt - tax
-            wc_curr = revenue * self.wc_pct
-            wc_delta= wc_curr - wc_prev
-            wc_prev = wc_curr
-            capex   = revenue * self.capex_pct
-            ufcf    = nopat + da - capex - wc_delta
+            # 5) NOPAT & Unlevered FCF
+            nopat    = ebt - tax
+            wc_curr  = revenue * self.wc_pct
+            wc_delta = wc_curr - wc_prev
+            wc_prev  = wc_curr
+            capex    = revenue * self.capex_pct
+            ufcf     = nopat + da - capex - wc_delta
 
             cash_avail = ufcf
 
-            # 6. Scheduled principal repayment
-            for t in self.debt_tranches:
-                paid = t.repay_principal(cash_avail, year - 1)
+            # 6) Scheduled principal repayment
+            for tr in self.debt_tranches:
+                paid = 0.0
+                if tr.amort_schedule and (year - 1) < len(tr.amort_schedule):
+                    due = tr.amort_schedule[year - 1]
+                    if has_revolver:
+                        # mandatory amort
+                        paid = min(due, tr.balance)
+                    else:
+                        # only repay from positive cash
+                        paid = min(due, max(0.0, cash_avail))
+                    tr.balance -= paid
                 cash_avail -= paid
 
-            # 7. Cash sweep of excess
-            sweep_amt = cash_avail * self.cash_sweep_pct
-            for t in self.debt_tranches:
-                if not (t.revolver or t.pik):
-                    pay = min(t.debt, sweep_amt)
-                    t.balance -= pay
-                    cash_avail -= pay
-                    break
+            # 7) Cash sweep of excess
+            if cash_avail > 0:
+                sweep_amt = cash_avail * self.cash_sweep_pct
+                for tr in self.debt_tranches:
+                    if not (tr.revolver or tr.pik):
+                        pay = min(tr.debt, sweep_amt)
+                        tr.balance -= pay
+                        cash_avail -= pay
+                        break
 
-            # 8. Revolver auto-draw if shortfall
-            if cash_avail < 0:
+            # 8) Revolver auto-draw on shortfall
+            if cash_avail < 0 and has_revolver:
                 rev = next((t for t in self.debt_tranches if t.revolver), None)
                 if rev:
-                    draw_amount = rev.draw(-cash_avail)
-                    cash_avail += draw_amount
+                    draw = rev.draw(-cash_avail)
+                    cash_avail += draw
 
-            # 9. Insolvency check
+            # 9) Insolvency check
             if cash_avail < 0:
                 raise InsolvencyError(f"Year {year}: Cash shortfall of {cash_avail:.2f}")
 
-            # 10. Record equity cash flow
+            # 10) Record equity CF
             irr_cf.append(cash_avail)
 
             # LTV covenant
@@ -201,7 +203,7 @@ class LBOModel:
                 if ltv > self.ltv_hurdle:
                     raise CovenantBreachError(f"Year {year}: LTV {ltv:.2f} above {self.ltv_hurdle}")
 
-            # Save year results
+            # Save year-by-year results
             results[f"Year {year}"] = {
                 "Revenue": revenue,
                 "EBITDA": ebitda,
@@ -217,12 +219,12 @@ class LBOModel:
                 "Total Debt": total_debt
             }
 
-        # Terminal value at chosen exit_year
+        # Terminal value at exit
         tv_ebitda      = results[f"Year {exit_year}"]["EBITDA"]
         terminal_value = tv_ebitda * self.exit_multiple
         net_debt       = sum(t.debt for t in self.debt_tranches)
-        eq_value       = terminal_value - net_debt
-        irr_cf.append(eq_value)
+        equity_value   = terminal_value - net_debt
+        irr_cf.append(equity_value)
 
         irr  = npf.irr(irr_cf)
         moic = sum(irr_cf[1:]) / self.equity
@@ -231,7 +233,7 @@ class LBOModel:
             "Exit Year": exit_year,
             "Terminal Value": terminal_value,
             "Net Debt": net_debt,
-            "Equity Value": eq_value,
+            "Equity Value": equity_value,
             "IRR": irr,
             "MOIC": moic
         }
@@ -240,9 +242,8 @@ class LBOModel:
     def summary(self) -> str:
         es = self.run()["Exit Summary"]
         return (
-            f"Exit Year: {es['Exit Year']}\\n"
-            f"Equity Value: ${es['Equity Value']:,.0f}\\n"
-            f"IRR: {es['IRR']:.2%}\\n"
-            f"MOIC: {es['MOIC']:.2f}x\\n"
+            f"Exit Year: {es['Exit Year']}\n"
+            f"Equity Value: ${es['Equity Value']:,.0f}\n"
+            f"IRR: {es['IRR']:.2%}\n"
+            f"MOIC: {es['MOIC']:.2f}x\n"
         )
-

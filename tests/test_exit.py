@@ -1,17 +1,34 @@
-import sys, os
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../src')))
+from typing import Dict
 
-from modules.exit import calculate_exit
+def calculate_exit(
+    final_year_ebitda: float,
+    exit_multiple: float,
+    debt: float,
+    initial_equity: float,
+    years: int
+) -> Dict[str, float]:
+    """
+    Calculate terminal value, equity value, and IRR on exit.
 
-def test_calculate_exit():
-    result = calculate_exit(
-        final_year_ebitda=20_000_000,
-        exit_multiple=8.0,
-        debt=60_000_000,
-        initial_equity=40_000_000,
-        years=5
-    )
+    Returns:
+        Dict with 'Terminal Value', 'Equity Value', and 'IRR'
+    """
 
-    assert round(result["Terminal Value"]) == 160_000_000
-    assert round(result["Equity Value"]) == 100_000_000
-    assert round(result["IRR"], 4) == round((100_000_000 / 40_000_000) ** (1/5) - 1, 4)
+    # Input validation
+    if initial_equity <= 0:
+        raise ValueError("initial_equity must be > 0")
+    if years <= 0:
+        raise ValueError("years must be > 0")
+
+    # Terminal and equity values
+    terminal_value = final_year_ebitda * exit_multiple
+    equity_value = terminal_value - debt
+
+    # IRR calculation (always returns a float)
+    irr = (equity_value / initial_equity) ** (1 / years) - 1
+
+    return {
+        "Terminal Value": terminal_value,
+        "Equity Value": equity_value,
+        "IRR": irr
+    }

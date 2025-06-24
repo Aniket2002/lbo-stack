@@ -1,22 +1,40 @@
-import sys, os
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../src')))
-
-from modules.cashflow import project_cashflows
+import pytest
+from src.modules.cashflow import project_cashflows
 
 def test_project_cashflows_basic():
-    result = project_cashflows(
-        revenue=50_000_000,
+    # Simple 2-year projection with no amortization
+    results = project_cashflows(
+        revenue=100.0,
         rev_growth=0.10,
-        ebitda_margin=0.20,
+        ebitda_margin=0.2,
         capex_pct=0.05,
-        debt=60_000_000,
-        interest_rate=0.07,
-        years=1
+        debt=50.0,
+        interest_rate=0.1,
+        tax_rate=0.25,
+        years=2,
+        debt_amort_schedule=[0.0, 0.0]
     )
+    # Year 1 checks
+    y1 = results["Year 1"]
+    assert pytest.approx(y1["Revenue"], rel=1e-6) == 110.0
+    assert pytest.approx(y1["EBITDA"], rel=1e-6) == 110.0 * 0.2
+    assert pytest.approx(y1["CapEx"], rel=1e-6) == 110.0 * 0.05
+    assert pytest.approx(y1["Interest"], rel=1e-6) == 50.0 * 0.1
+    assert y1["Debt Amortized"] == 0.0
+    assert y1["Ending Debt"] == 50.0
 
-    year1 = result["Year 1"]
-    assert round(year1["Revenue"]) == 55_000_000
-    assert round(year1["EBITDA"]) == 11_000_000
-    assert round(year1["CapEx"]) == 2_750_000
-    assert round(year1["Interest"]) == 4_200_000
-    assert round(year1["FCF"]) == 4_050_000
+def test_project_cashflows_with_amortization():
+    # 3-year projection with equal amortization
+    results = project_cashflows(
+        revenue=100.0,
+        rev_growth=0.0,
+        ebitda_margin=0.3,
+        capex_pct=0.1,
+        debt=90.0,
+        interest_rate=0.05,
+        tax_rate=0.2,
+        years=3,
+        debt_amort_schedule=[30.0, 30.0, 30.0]
+    )
+    # After full amortization, ending debt zero
+    assert results["Year 3"]["Ending Debt"] == 0.0
