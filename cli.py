@@ -1,130 +1,137 @@
-import sys, os
-sys.path.insert(0, os.path.abspath("src"))
-
-
-import typer
+#!/usr/bin/env python3
 import json
+import logging
 from pathlib import Path
+from typing import List, Optional
+
+import pandas as pd
+import typer
+from pydantic import BaseModel, Field, ValidationError
+
 from src.modules.lbo_model import LBOModel
-from src.modules.sensitivity import run_sensitivity, export_results, run_2d_sensitivity
-from src.modules.fund_waterfall import summarize_waterfall, compute_waterfall_by_year
+from src.modules.sensitivity import run_sensitivity, export_results
+from src.modules.fund_waterfall import compute_waterfall_by_year, summarize_waterfall
 
-app = typer.Typer()
+app = typer.Typer(add_completion=False)
+logger = logging.getLogger(__name__)
 
-@app.command()
-def run(config: Path, years: int = 5):
-    """
-    Run a single LBO model from JSON config.
-    """
-    params = json.loads(config.read_text())
-    model = LBOModel(**params)
-    result = model.run(years)
-    for year, data in result.items():
-        print(f"\n{year}:")
-        for key, val in data.items():
-            print(f"  {key}: {val:,.2f}")
 
-@app.command()
-def sensitivity(
-    config: Path,
-    param: str,
-    values: str,
-    output: Path = Path("output/sensitivity.csv"),
-    years: int = 5
+class LBOConfig(BaseModel):
+    enterprise_value: float = Field(..., gt=0, description="Total enterprise value")
+    debt_pct: float = Field(..., ge=0, le=1, description="Debt % of EV between 0 and 1")
+    revenue: float = Field(..., ge=0, description="Initial revenue")
+    rev_growth: float = Field(..., gt=-1, lt=5, description="Year-over-year revenue growth rate")
+    ebitda_margin: float = Field(..., ge=0, le=1, description="EBITDA margin between 0 and 1")
+    capex_pct: float = Field(..., ge=0, le=1, description="CapEx % of revenue")
+    wc_pct: float = Field(0.10, ge=0, le=1, description="Working capital % of revenue (default 10%)")
+    tax_rate: float = Field(0.25, ge=0, le=1, description="Tax rate between 0 and 1 (default 25%)")
+    exit_multiple: float = Field(..., gt=0, description="Exit EBITDA multiple")
+    interest_rate: float = Field(..., ge=0, le=1, description="Interest rate between 0 and 1")
+
+
+class WaterfallConfig(BaseModel):
+    committed_capital: float = Field(..., gt=0, description="Total fund committed capital")
+    capital_calls: List[float] = Field(..., description="Annual capital calls")
+    distributions: List[float] = Field(..., description="Annual distributions")
+    tiers: List[dict] = Field(..., description="Waterfall tiers as list of {hurdle, carry}")
+    gp_commitment: Optional[float] = Field(0.02, ge=0, le=1, description="GP commitment %")
+    mgmt_fee_pct: Optional[float] = Field(0.02, ge=0, le=1, description="Annual management fee %")
+    reset_hurdle: Optional[bool] = Field(False, description="Reset hurdle after each tier")
+    cashless: Optional[bool] = Field(False, description="Cashless carry mode")
+
+
+@app.callback(invoke_without_command=True)
+def main(
+    verbose: bool = typer.Option(False, "--verbose", "-v", help="Enable verbose logging")
 ):
     """
-    Run 1D sensitivity on a single parameter.
-    Example: --param exit_multiple --values "6,7,8,9"
+    PE LBO & Fund Waterfall CLI
     """
-    params = json.loads(config.read_text())
-    vals = [float(v.strip()) for v in values.split(",")]
-    results = run_sensitivity(params, param, vals, years)
-    export_results(results, str(output))
-    print(f"Saved results to {output}")
+    level = logging.DEBUG if verbose else logging.INFO
+    logging.basicConfig(format="%(levelname)s: %(message)s", level=level)
 
+
+@app.command()
+def run(
+    config: Path = typer.Argument(..., exists=True, help="Path to LBO config JSON"),
+    output_dir: Path = typer.Option(Path("output/lbo"), "-o", "--output-dir", help="Directory to save LBO results"),
+    dry_run: bool = typer.Option(False, "--dry-run", help="Validate config and exit without running")
+):
+    """
+    Run the LBO model using a JSON config.
+    """
+    try:
+        raw = json.loads(config.read_text())
+        cfg = LBOConfig(**raw)
+        logger.debug("Loaded LBO config: %s", cfg.json())
+    except (json.JSONDecodeError, ValidationError) as e:
+        typer.secho(f"❌ Configuration error:\n{e}", fg=typer.colors.RED)
+        raise typer.Exit(code=1)
+
+    if dry_run:
+        typer.secho("✅ LBO config is valid. Exiting (dry run).", fg=typer.colors.GREEN)
+        raise typer.Exit()
+
+    output_dir.mkdir(parents=True, exist_ok=True)
+    model = LBOModel(**cfg.dict())
+    result = model.run(years=raw.get("years", 5))
+
+    out_file = output_dir / "lbo_results.json"
+    out_file.write_text(json.dumps(result, indent=2))
+    typer.secho(f"✅ LBO run complete. Results saved to {out_file}", fg=typer.colors.GREEN)
 
 
 @app.command()
 def waterfall(
-    config: Path,
-    output_csv: Path = Path("output/fund_waterfall.csv")
+    config: Path = typer.Argument(..., exists=True, help="Path to waterfall config JSON"),
+    output_dir: Path = typer.Option(Path("output/fund"), "-o", "--output-dir", help="Directory to save waterfall outputs"),
+    dry_run: bool = typer.Option(False, "--dry-run", help="Validate config and exit without running")
 ):
     """
-    Run a fund waterfall simulation from a config JSON.
+    Run fund waterfall simulation using a JSON config.
     """
-    data = json.loads(config.read_text())
+    try:
+        raw = json.loads(config.read_text())
+        cfg = WaterfallConfig(**raw)
+        logger.debug("Loaded Waterfall config: %s", cfg.json())
+    except (json.JSONDecodeError, ValidationError) as e:
+        typer.secho(f"❌ Configuration error:\n{e}", fg=typer.colors.RED)
+        raise typer.Exit(code=1)
 
-    tiers = data.get("tiers", [{"hurdle": 0.08, "carry": 0.20}])
-    capital_calls = data["capital_calls"]
-    distributions = data["distributions"]
-    committed_capital = data["committed_capital"]
+    if dry_run:
+        typer.secho("✅ Waterfall config is valid. Exiting (dry run).", fg=typer.colors.GREEN)
+        raise typer.Exit()
 
-    gp_commitment = data.get("gp_commitment", 0.02)
-    mgmt_fee_pct = data.get("mgmt_fee_pct", 0.02)
-    reset_hurdle = data.get("reset_hurdle", False)
-    cashless = data.get("cashless", False)
+    output_dir.mkdir(parents=True, exist_ok=True)
 
-    # Run year-wise breakdown
-    rows = compute_waterfall_by_year(
-        committed_capital=committed_capital,
-        capital_calls=capital_calls,
-        distributions=distributions,
-        tiers=tiers,
-        gp_commitment=gp_commitment,
-        mgmt_fee_pct=mgmt_fee_pct,
-        reset_hurdle=reset_hurdle,
-        cashless=cashless
+    breakdown = compute_waterfall_by_year(**cfg.dict())
+    summary  = summarize_waterfall(**cfg.dict())
+
+    # Save detailed breakdown
+    df     = pd.DataFrame(breakdown)
+    csv_out = output_dir / "waterfall_breakdown.csv"
+    df.to_csv(csv_out, index=False)
+
+    # Save summary
+    json_out = output_dir / "waterfall_summary.json"
+    json_out.write_text(json.dumps(summary, indent=2))
+
+    typer.secho(
+        f"✅ Waterfall simulation complete.\n"
+        f"  Breakdown CSV: {csv_out}\n"
+        f"  Summary JSON: {json_out}",
+        fg=typer.colors.GREEN
     )
-
-    # Print summary
-    summary = summarize_waterfall(
-        committed_capital=committed_capital,
-        capital_calls=capital_calls,
-        distributions=distributions,
-        tiers=tiers,
-        gp_commitment=gp_commitment,
-        mgmt_fee_pct=mgmt_fee_pct,
-        reset_hurdle=reset_hurdle,
-        cashless=cashless
-    )
-
-    print("\n🎯 Fund Return Summary:")
-    for k, v in summary.items():
-        print(f"{k}: {v:,.2f}" if isinstance(v, float) else f"{k}: {v}")
-
-    # Save to CSV
-    import pandas as pd
-    df = pd.DataFrame(rows)
-    output_csv.parent.mkdir(parents=True, exist_ok=True)
-    df.to_csv(output_csv, index=False)
-    print(f"\n📤 Saved detailed waterfall to {output_csv}")
-
 
 
 @app.command()
-def grid(
-    config: Path,
-    row_param: str,
-    row_values: str,
-    col_param: str,
-    col_values: str,
-    metric: str = "IRR",
-    output: Path = Path("output/grid.csv"),
-    years: int = 5
+def sensitivity(
+    # stub: mimic run/waterfall pattern with config, output-dir, dry-run
 ):
     """
-    Run 2D sensitivity grid.
-    Example:
-    --row-param rev_growth --row-values "0.05,0.10,0.15"
-    --col-param exit_multiple --col-values "6,7,8"
+    Run sensitivity analysis (not yet implemented).
     """
-    params = json.loads(config.read_text())
-    row_vals = [float(v.strip()) for v in row_values.split(",")]
-    col_vals = [float(v.strip()) for v in col_values.split(",")]
-
-    df = run_2d_sensitivity(params, row_param, row_vals, col_param, col_vals, years, metric)
-    df.to_csv(output)
-    print(f"Saved 2D grid to {output}")
+    typer.secho("⚠️ Sensitivity analysis not yet implemented.", fg=typer.colors.YELLOW)
 
 
 if __name__ == "__main__":

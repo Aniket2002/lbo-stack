@@ -1,6 +1,6 @@
 from typing import List, Dict, Any
 import pandas as pd
-from modules.lbo_model import LBOModel
+from src.modules.lbo_model import LBOModel
 
 def run_sensitivity(
     base_params: Dict[str, Any],

@@ -1,0 +1,71 @@
+{
+  "Year 1": {
+    "Revenue": 55000000.00000001,
+    "EBITDA": 11000000.000000002,
+    "CapEx": 2750000.0000000005,
+    "Interest": 4200000.0,
+    "WC Delta": 500000.00000000093,
+    "Tax": 887500.0000000002,
+    "Principal Repayment": 12000000.0,
+    "Ending Debt": 48000000.0,
+    "Cash Balance": 0,
+    "Levered FCF": -9337500.0
+  },
+  "Year 2": {
+    "Revenue": 60500000.000000015,
+    "EBITDA": 12100000.000000004,
+    "CapEx": 3025000.000000001,
+    "Interest": 3360000.0000000005,
+    "WC Delta": 550000.0000000009,
+    "Tax": 1291250.0000000007,
+    "Principal Repayment": 12000000.0,
+    "Ending Debt": 36000000.0,
+    "Cash Balance": 0,
+    "Levered FCF": -8126249.999999998
+  },
+  "Year 3": {
+    "Revenue": 66550000.00000002,
+    "EBITDA": 13310000.000000006,
+    "CapEx": 3327500.0000000014,
+    "Interest": 2520000.0000000005,
+    "WC Delta": 605000.0000000009,
+    "Tax": 1714375.0000000007,
+    "Principal Repayment": 12000000.0,
+    "Ending Debt": 24000000.0,
+    "Cash Balance": 0,
+    "Levered FCF": -6856874.999999998
+  },
+  "Year 4": {
+    "Revenue": 73205000.00000003,
+    "EBITDA": 14641000.000000007,
+    "CapEx": 3660250.000000002,
+    "Interest": 1680000.0000000002,
+    "WC Delta": 665500.0000000009,
+    "Tax": 2158812.500000001,
+    "Principal Repayment": 12000000.0,
+    "Ending Debt": 12000000.0,
+    "Cash Balance": 0,
+    "Levered FCF": -5523562.499999997
+  },
+  "Year 5": {
+    "Revenue": 80525500.00000004,
+    "EBITDA": 16105100.00000001,
+    "CapEx": 4026275.0000000023,
+    "Interest": 840000.0000000001,
+    "WC Delta": 732050.0000000009,
+    "Tax": 2626693.750000002,
+    "Principal Repayment": 12000000.0,
+    "Ending Debt": 0.0,
+    "Cash Balance": 0,
+    "Levered FCF": -4119918.7499999944
+  },
+  "Exit Summary": {
+    "Terminal Value": 128840800.00000007,
+    "Remaining Debt": 0.0,
+    "Cash Balance": 0,
+    "Net Debt": 0.0,
+    "Equity Value": 128840800.00000007,
+    "IRR": 0.15033868093961011,
+    "MOIC": 3.221020000000002
+  }
+}
