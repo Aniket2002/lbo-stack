@@ -40,3 +40,9 @@ extend-ignore = ["E203", "W503"]
 [tool.isort]
 profile = "black"
 
+[tool.poetry]
+name = "lbo-stack"
+version = "0.1.0"
+package-mode = false
+
+
