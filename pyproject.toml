@@ -21,6 +21,7 @@ dependencies = [
     "markdown2",
     "weasyprint",
     "pre-commit",
+    "pytest-cov",
 ]
 
 [project.scripts]
