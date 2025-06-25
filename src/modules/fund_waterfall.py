@@ -150,7 +150,6 @@ def compute_waterfall_by_year(
 
         # 10) Record distribution CFs
         netfee_cf.append(lp_share + gp_share)
-        pre_fee_cf.append(0.0)  # no change in gross CF
         lp_cf.append(lp_share)
         if cashless:
             gp_cf.append(-gp_share)
