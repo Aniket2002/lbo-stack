@@ -223,7 +223,7 @@ def run(
     es = results["Exit Summary"]
     typer.secho("✅ LBO run complete", fg=typer.colors.GREEN)
     typer.echo(f"  Exit Year: {es['Exit Year']}")
-    typer.echo(f"  Equity: ${es['Equity Value']:, }")
+    typer.echo(f"  Equity: ${es['Equity Value']:, }")  # noqa: E231
     typer.echo(
         f"  {typer.style('IRR:', fg=typer.colors.GREEN, bold=True)} {es['IRR']: .2%}"
     )

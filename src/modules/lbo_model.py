@@ -339,7 +339,7 @@ class LBOModel:
         es = self.run()["Exit Summary"]
         return (
             f"Exit Year: {es['Exit Year']}\n"
-            f"Equity Value: ${es['Equity Value']:,.0f}\n"
+            f"Equity Value: ${es['Equity Value']:,.0f}\n"  # noqa: E231
             f"IRR: {es['IRR']: .2%}\n"
             f"MOIC: {es['MOIC']: .2f}x\n"
         )

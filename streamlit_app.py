@@ -144,7 +144,7 @@ with tab1:
         )
         col2.metric("MOIC (LP)", f"{summary['MOIC']: .2f}x")
         gp_carry = summary.get("Cumulative GP Carry", 0.0)
-        col3.metric("GP Carry", f"${gp_carry:, }")
+        col3.metric("GP Carry", f"${gp_carry:, }")  # noqa: E231
 
         st.dataframe(pd.DataFrame(breakdown), use_container_width=True)
 
