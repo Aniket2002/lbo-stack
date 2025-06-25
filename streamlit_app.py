@@ -142,9 +142,9 @@ with tab1:
             f"{summary['Net IRR (LP)']: .2%}",
             delta_color="normal" if summary["Net IRR (LP)"] >= hurdle else "off",
         )
-        col2.metric("MOIC (LP)", f"{summary['MOIC']: .2f}x")
+        col2.metric("MOIC (LP)", f"{summary['MOIC']:.2f}x")  # noqa: E231
         gp_carry = summary.get("Cumulative GP Carry", 0.0)
-        col3.metric("GP Carry", f"${gp_carry:, }")  # noqa: E231
+        col3.metric("GP Carry", f"${gp_carry:,}")  # noqa: E231
 
         st.dataframe(pd.DataFrame(breakdown), use_container_width=True)
 
