@@ -222,8 +222,8 @@ def run(
 
     es = results["Exit Summary"]
     typer.secho("✅ LBO run complete", fg=typer.colors.GREEN)
-    typer.echo(f"  Exit Year : {es['Exit Year']}")
-    typer.echo(f"  Equity    : ${es['Equity Value']:,}")
+    typer.echo(f"  Exit Year: {es['Exit Year']}")
+    typer.echo(f"  Equity: ${es['Equity Value']:,}")
     typer.echo(
         f"  {typer.style('IRR:', fg=typer.colors.GREEN, bold=True)} {es['IRR']:.2%}"
     )
@@ -316,9 +316,9 @@ def waterfall(
         raise typer.Exit(2)
 
     typer.secho("✅ Waterfall complete", fg=typer.colors.GREEN)
-    typer.echo(f"  Net LP IRR : {summary['Net IRR (LP)']:.2%}")
-    typer.echo(f"  MOIC       : {summary['MOIC']:.2f}x")
-    typer.echo(f"  GP Carry   : {summary['Cumulative GP Carry']:.2f}")
+    typer.echo(f"  Net LP IRR: {summary['Net IRR (LP)']:.2%}")
+    typer.echo(f"  MOIC: {summary['MOIC']:.2f}x")
+    typer.echo(f"  GP Carry: {summary['Cumulative GP Carry']:.2f}")
 
 
 # ─── sensitivity ──────────────────────────────────────────────────────
