@@ -1,152 +1,153 @@
-``
 <h1 align="center">
-  LBO & Fund Waterfall Simulator 🦄
+  LBO-Stack 🦄
 </h1>
 
 <p align="center">
-  <em>Deal-grade analytics &nbsp;|&nbsp; Partner-grade transparency &nbsp;|&nbsp; Push-button storytelling</em>
+  <em>Deal-grade analytics  |  Partner-grade transparency  |  Push-button storytelling</em>
 </p>
 
 <p align="center">
+  <!-- CI & coverage badges retained -->
   <a href="https://github.com/Aniket2002/lbo-stack/actions/workflows/ci.yml">
     <img alt="CI Status" src="https://img.shields.io/github/actions/workflow/status/Aniket2002/lbo-stack/ci.yml?label=CI&logo=github">
   </a>
   <a href="https://codecov.io/gh/Aniket2002/lbo-stack">
     <img alt="Coverage" src="https://img.shields.io/codecov/c/github/Aniket2002/lbo-stack?logo=codecov">
   </a>
-  <a href="https://pypi.org/project/lbo-stack/">
-    <img alt="PyPI" src="https://img.shields.io/pypi/v/lbo-stack?logo=pypi&color=blue">
+  <!-- ▶️ Live demo badge updated -->
+  <a href="https://aniket2002-lbosim.streamlit.app/">
+    <img alt="Live Demo" src="https://img.shields.io/badge/Demo-Live-%2300c853?logo=streamlit&logoColor=white">
   </a>
   <a href="#license">
     <img alt="License" src="https://img.shields.io/github/license/Aniket2002/lbo-stack">
-  </a>
-  <a href="https://lbo-demo.streamlit.app">
-    <img alt="Live Demo" src="https://img.shields.io/badge/Demo-Live-%2300c853?logo=streamlit&logoColor=white">
   </a>
 </p>
 
 ---
 
-## 1. Why ‟lbo-stack” matters
-> **“Excel macros don’t scale and black-box SaaS tools miss the nuance.”**  
-> lbo-stack gives investment teams an **open, inspectable, and extensible** engine for modelling  
-> deal-level cashflows **and** fund-level economics—complete with CI/CD, test coverage, and a polished UI.
+## 1&nbsp;·&nbsp;What is **lbo-stack**?
 
-* **Investor-grade accuracy**  
-  *Cash-sweep hierarchy, LTV & ICR covenants, day-one fees, 100 % GP catch-up, claw-back with interest.*
-* **Quant-speed iteration**  
-  *Vectorised sensitivities & bootstrap CIs run 100× faster than Excel grids.*
-* **Push-button storytelling**  
-  *Streamlit front-end exports an investment memo PDF in one click.*
-* **Battle-tested quality**  
-  *>90 % unit-test coverage, GitHub Actions matrix (3.9-3.12), pre-commit lint, type-hints.*
+> **“Excel models break; black-box SaaS hides assumptions.”**  
+> `lbo-stack` is an **open, inspectable, and extensible** toolkit that models  
+> deal-level cash flows *and* fund-level waterfalls, complete with tests, CI, and a polished UI.
+
+* **Investor-grade accuracy** – cash-sweep hierarchy, LTV & ICR covenants, 100 % GP catch-up, claw-back with interest.  
+* **Quant-speed iteration** – vectorised sensitivity grids & bootstrap CIs run orders of magnitude faster than Excel.  
+* **Push-button storytelling** – Streamlit front-end exports an investment memo PDF in one click.  
+* **Production hygiene** – > 90 % test coverage, GitHub Actions matrix, pre-commit, type hints.
 
 ---
 
-## 2. Tour-in-60-seconds
+## 2&nbsp;·&nbsp;File-tree overview
+
+```
+
+lbo-stack/
+├─ .github/workflows/ci.yml        # test + lint matrix
+├─ case\_studies/                   # real-deal replicas (WIP)
+├─ data/                           # sample JSON configs
+├─ output/                         # generated CSV / JSON results
+├─ src/
+│  ├─ modules/
+│  │  ├─ cashflow\.py
+│  │  ├─ exit.py
+│  │  ├─ fund\_waterfall.py
+│  │  ├─ lbo\_model.py
+│  │  └─ sensitivity.py
+│  └─ utils/ (helpers, schemas)
+├─ tests/                          # pytest suite (>90 % coverage)
+├─ cli.py                          # Typer CLI entrypoint
+├─ streamlit\_app.py                # Web UI
+└─ README.md                       # ← you are here
+
+````
+
+All public APIs live under `src/modules/`; CLI & UI import directly from there.
+
+---
+
+## 3&nbsp;·&nbsp;60-second product tour
 
 | Screenshot | What you see |
 |------------|--------------|
-| <img src="docs/img/sim.png" width="320"> | **Simulator tab** – tweak leverage, growth, tiers ➜ instant IRR/MOIC & GP/LP chart |
-| <img src="docs/img/compare.png" width="320"> | **Scenario Compare** – preset cases benchmarked side-by-side |
-| <img src="docs/img/memo.png" width="320"> | **Memo export** – PDF with tables, charts, narrative & assumptions |
+| <img src="docs/img/sim.png" width="320"> | **Simulator tab** – tweak leverage, tiers ➜ instant IRR & MOIC |
+| <img src="docs/img/compare.png" width="320"> | **Scenario Compare** – benchmark 3 presets side-by-side |
+| <img src="docs/img/memo.png" width="320"> | **Memo export** – PDF with narrative, tables & charts |
 
-*(Live demo ⤴︎ link at top – no sign-up required).*
+Live demo 👉 **<https://aniket2002-lbosim.streamlit.app/>**
 
 ---
 
-## 3. Quick-Start
+## 4&nbsp;·&nbsp;Quick-Start
 
 ```bash
-# 1 / Install
-pip install lbo-stack[ui]  # pulls Streamlit, Plotly, WeasyPrint
+# 1 / Clone and install (editable)
+git clone https://github.com/Aniket2002/lbo-stack.git
+cd lbo-stack
+pip install -e .[ui,dev]
 
 # 2 / Generate sample configs
-lbo init-sample ./configs
+python cli.py init-sample ./data
 
-# 3 / Run an LBO
-lbo run ./configs/sample_lbo.json -y 7 -o ./results --verbose
+# 3 / Run an LBO (7-year horizon)
+python cli.py run ./data/sample_lbo.json --years 7 -o ./output -v
 
-# 4 / Open the UI
-streamlit run -m lbo_stack.streamlit_app
+# 4 / Launch the Streamlit app
+streamlit run streamlit_app.py
 ````
 
-> **CI-proof:** `lbo run … --dry-run` validates config without executing simulations—perfect for PR gates.
+`--dry-run` validates configs without executing – perfect for CI pipelines.
 
 ---
 
-## 4. Architecture at a glance
+## 5 · Architecture
 
 ```mermaid
 flowchart LR
-    subgraph Engine
-      LBO[LBOModel] --> Cash(Cash-Sweep & Covenants)
-      Cash --> Exit[Exit Maths]
-      Exit --> Waterfall(Fund Waterfall)
-    end
-    Engine --> Sensitivity(Sensitivity Grid + Bootstrap CI)
-    subgraph Interfaces
-      CLI -->|json/csv| Results
-      UI --> Memo
-    end
-    Engine --> CLI
-    Engine --> UI
-    Engine --> Tests
+  subgraph Engine
+    LBO[LBOModel] --> Cash(Cash Sweep)
+    Cash --> Exit
+    Exit --> Waterfall
+  end
+  Engine --> Sensitivity
+  subgraph Interfaces
+    CLI --> Results
+    UI --> Memo
+  end
+  Engine --> CLI
+  Engine --> UI
 ```
 
-*Pure Python, stateless; any step can be swapped for QuantLib, PyTorch, etc.*
+Pure-Python, stateless; swap any component with QuantLib, Pandas, etc.
 
 ---
 
-## 5. Feature deep-dive
+## 6 · Road-map
 
-| Layer                | Highlights                                                                                                                                  |
-| -------------------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Deal Engine**      | • Bullet & amort tranches with rate grids<br>• Revolver draw/repay<br>• Cash-sweep cascading senior→junior→PIK<br>• LTV & ICR breach errors |
-| **Fund Waterfall**   | • Ascending hurdles (IRR or simple pref)<br>• 100 % catch-up<br>• LP capital-return gate<br>• Claw-back with simple interest                |
-| **Analysis Toolkit** | • 1-D / 2-D sensitivity (`exit_multiple`, leverage, growth …)<br>• Bootstrap IRR confidence intervals<br>• Plotly heat-map export           |
-| **CLI**              | • `init-sample`, `run`, `waterfall`, `sensitivity` sub-commands<br>• JSON extras passthrough & colourised KPI printout                      |
-| **Streamlit UI**     | • Three-tab workflow<br>• Drag-and-drop tier editor<br>• Colour-coded KPIs<br>• One-click Markdown→PDF memos                                |
+* **v1.1**  Day-weighted simple-pref accrual
+* **v1.2**  Rate-grid pricing for TLB + mezz toggle
+* **v1.3**  Docker-Compose deploy & Codespaces badge
+* **v1.4**  Role-based dashboards (LP vs GP)
+* **v2.0**  **Three-Statement Engine** → integrated IS/BS/CF generator feeding the LBO model, enabling working-capital roll-forwards and tax shield precision
 
----
-
-## 6. Benchmarks
-
-| Scenario grid                          | Runtime (M1 Pro) |
-| -------------------------------------- | ---------------- |
-| 50 × 50 → 2 500 sims                   | **0.6 s**        |
-| 100 × 100 → 10 000 sims (parallel = 4) | **1.8 s**        |
-| Bootstrap 1 000 draws, 7-yr CF         | **0.9 s**        |
-
-> **Fast enough to plug into a Friday IC pack on the fly.**
+*(Open to PRs 👏 – raise an issue if you want to tackle an item.)*
 
 ---
 
-<!-- ## 7. Research pedigree
+## 7 · Hire me 🍻
 
-Portions of lbo-stack underpin my forthcoming paper:
+I’m **Aniket Bhardwaj** – ex-Volkswagen DevOps engineer turned quant-finance builder.
+If this repo shows the **rigour × product polish** your team values, drop me a line:
 
-> **“Quantifying the Impact of Fund-Waterfall Design on GP/LP Outcomes”**
-> (pre-print DOI 10.48550/arXiv.NNNNN)
+* **Email:** [bhardwaj.aniket2002@gmail.com](mailto:bhardwaj.aniket2002@gmail.com)
+* **LinkedIn:** [https://www.linkedin.com/in/aniket-bhardwaj-b002/](https://www.linkedin.com/in/aniket-bhardwaj-b002/)
 
-All figures in the manuscript are reproducible via `notebooks/paper_figures.ipynb`.
-
---- -->
-
-## 8. Road-map (v1.1 → v2.0)
-
-* [ ] Day-weighted simple pref accrual
-* [ ] Rate-grid pricing on Term-Loan B
-* [ ] Monte-Carlo portfolio wrapper
-* [ ] Role-based dashboards (LP vs GP)
-* [ ] Docker-compose one-liner deploy
-
-*Issues & PRs welcome — let’s build the Bloomberg-Terminal of private equity.*
+> *“Let’s ship the future of PE analytics together.”*
 
 ---
 
 ## License
 
-MIT — free to use, fork, and improve. Just throw a ⭐ if it saves your Monday.
+MIT – free to fork, star, and improve.
+Give it a ⭐ if it saves your Monday.
 
-```
