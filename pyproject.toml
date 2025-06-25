@@ -1,0 +1,41 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "lbo-stack"
+version = "0.1.0"
+description = "Modular simulation framework for LBO deals and fund-waterfall analysis"
+readme = "README.md"
+license = { text = "MIT" }
+authors = [ { name = "Aniket Bhardwaj", email = "bhardwaj.aniket2002@gmail.com" } ]
+requires-python = ">=3.9,<4.0"
+dependencies = [
+    "numpy",
+    "pandas",
+    "numpy-financial",
+    "pydantic",
+    "typer",
+    "streamlit",
+    "plotly",
+    "markdown2",
+    "weasyprint",
+    "pre-commit",
+]
+
+[project.scripts]
+lbo = "cli:main"
+fund-waterfall = "cli:fund_waterfall"
+sensitivity = "cli:sensitivity"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+include = ["src*"]
+
+[tool.flake8]
+max-line-length = 88
+extend-ignore = ["E203", "W503"]
+
+[tool.isort]
+profile = "black"
+

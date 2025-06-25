@@ -1,98 +1,144 @@
-from typing import List, Dict, Any
+# src/modules/sensitivity.py
+
+import itertools
+import time
+from typing import Any, Dict, List, Optional
+
+import numpy as np
+import numpy_financial as npf
 import pandas as pd
+import plotly.express as px
+
 from src.modules.lbo_model import LBOModel
 
+
 def run_sensitivity(
-    base_params: Dict[str, Any],
-    vary_param: str,
+    base: Dict[str, Any],
+    param: str,
     values: List[float],
-    years: int = 5
+    years: int = 5,
+    bootstrap: bool = False,
+    n_bootstrap: int = 1000,
+    ci: Optional[List[float]] = None,
 ) -> List[Dict[str, Any]]:
     """
-    Run LBOModel for a range of values of a single parameter.
+    Run 1D sensitivity on a single parameter.
 
-    Args:
-        base_params: dictionary of baseline inputs
-        vary_param: the parameter to sweep (e.g., "exit_multiple")
-        values: list of values to test
-        years: projection period
-
-    Returns:
-        List of dicts with IRR results per run
+    Returns a list of dicts, each with:
+      - "Param": the parameter name
+      - "Value": the tested value
+      - "IRR": point estimate IRR
+      - "MOIC": point estimate MOIC
+      - optionally "IRR_CI_Lower" and "IRR_CI_Upper" if bootstrap=True
     """
-    results = []
+    if ci is None:
+        ci = [2.5, 97.5]
 
-    for val in values:
-        test_params = base_params.copy()
-        test_params[vary_param] = val
+    results: List[Dict[str, Any]] = []
+    for v in values:
+        cfg = base.copy()
+        cfg[param] = v
+        model = LBOModel(**cfg)
+        run_out = model.run(years)
+        summary = run_out["Exit Summary"]
+        irr_point = summary["IRR"]
+        moic = summary["MOIC"]
 
-        model = LBOModel(**test_params)
-        output = model.run(years)
+        row: Dict[str, Any] = {
+            "Param": param,
+            "Value": v,
+            "IRR": irr_point,
+            "MOIC": moic,
+        }
 
-        results.append({
-            "Param": vary_param,
-            "Value": val,
-            "IRR": output["Exit Summary"]["IRR"],
-            "Equity Value": output["Exit Summary"]["Equity Value"],
-            "Terminal Value": output["Exit Summary"]["Terminal Value"]
-        })
+        if bootstrap:
+            # Build cashflow list for IRR bootstrap
+            eq0 = -model.equity
+            cashflows = [run_out[f"Year {i}"]["Equity CF"] for i in range(1, years + 1)]
+            exit_eq = summary.get("Equity Value", 0.0)
+            cf_list = [eq0] + cashflows + [exit_eq]
+
+            boot_irrs: List[float] = []
+            for _ in range(n_bootstrap):
+                # resample all but the initial outflow
+                sample = [cf_list[0]] + list(
+                    np.random.choice(cf_list[1:], size=len(cf_list) - 1, replace=True)
+                )
+                boot_irrs.append(float(npf.irr(sample)))
+            lower, upper = np.nanpercentile(boot_irrs, ci)
+            row["IRR_CI_Lower"] = float(lower)
+            row["IRR_CI_Upper"] = float(upper)
+
+        results.append(row)
 
     return results
 
 
-def results_to_dataframe(results: list) -> pd.DataFrame:
+def export_results(data: List[Dict[str, Any]], filename: str) -> None:
     """
-    Convert list of sensitivity results to a pandas DataFrame.
+    Export a list of result dicts to a CSV file at `filename`.
+    """
+    df = pd.DataFrame(data)
+    df.to_csv(filename, index=False)
+
+
+def results_to_dataframe(results: List[Dict[str, Any]]) -> pd.DataFrame:
+    """
+    Convert a list of result dicts into a pandas DataFrame.
     """
     return pd.DataFrame(results)
 
 
-def export_results(results: list, filename: str = "sensitivity_output.csv"):
-    """
-    Save results to CSV or XLSX based on file extension.
-    """
-    df = results_to_dataframe(results)
-    if filename.endswith(".xlsx"):
-        df.to_excel(filename, index=False)
-    else:
-        df.to_csv(filename, index=False)
-
 def run_2d_sensitivity(
-    base_params: Dict[str, Any],
-    row_param: str,
-    row_values: List[float],
-    col_param: str,
-    col_values: List[float],
+    base: Dict[str, Any],
+    param1: str,
+    values1: List[float],
+    param2: str,
+    values2: List[float],
     years: int = 5,
-    metric: str = "IRR"
+    heatmap: bool = False,
+    heatmap_kwargs: Optional[Dict[str, Any]] = None,
 ) -> pd.DataFrame:
     """
-    Run LBOModel over a grid of (row_param × col_param) and return a 2D DataFrame.
+    Run 2D sensitivity on two parameters and pivot IRR into a matrix.
 
-    Args:
-        base_params: baseline parameters
-        row_param: varied along rows (e.g. 'rev_growth')
-        row_values: list of row values
-        col_param: varied along columns (e.g. 'exit_multiple')
-        col_values: list of column values
-        years: projection period
-        metric: output metric ("IRR", "Equity Value", etc.)
+    Returns a DataFrame of shape (len(values1), len(values2))
+    with index=values1, columns=values2.
 
-    Returns:
-        pd.DataFrame with row_param as index, col_param as columns
+    If heatmap=True, displays an interactive heatmap via plotly.express.imshow.
+    As a performance guard, asserts runtime < 1s for a 100×100 grid.
     """
-    data = []
+    start = time.time()
 
-    for row_val in row_values:
-        row = []
-        for col_val in col_values:
-            params = base_params.copy()
-            params[row_param] = row_val
-            params[col_param] = col_val
+    # Collect (summary, v1, v2) tuples without using a walrus assignment
+    rows: List[tuple] = []
+    for v1, v2 in itertools.product(values1, values2):
+        cfg = {**base, param1: v1, param2: v2}
+        summary = LBOModel(**cfg).run(years)["Exit Summary"]
+        rows.append((summary, v1, v2))
 
-            model = LBOModel(**params)
-            result = model.run(years)
-            row.append(result["Exit Summary"][metric])
-        data.append(row)
+    # Build DataFrame
+    data = [
+        {param1: v1, param2: v2, "IRR": summary["IRR"], "MOIC": summary["MOIC"]}
+        for summary, v1, v2 in rows
+    ]
+    df = pd.DataFrame(data)
+    pivot = df.pivot(index=param1, columns=param2, values="IRR")
 
-    return pd.DataFrame(data, index=row_values, columns=col_values)
+    # Optional heatmap
+    if heatmap:
+        fig = px.imshow(
+            pivot.values,
+            x=pivot.columns,
+            y=pivot.index,
+            labels={"x": param2, "y": param1, "color": "IRR"},
+            **(heatmap_kwargs or {}),
+        )
+        fig.show()
+
+    # Performance guard for large grids
+    if len(values1) * len(values2) >= 10_000:
+        duration = time.time() - start
+        assert duration < 1.0, f"run_2d_sensitivity too slow: {duration:.3f}s"
+
+    return pivot

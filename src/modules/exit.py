@@ -1,12 +1,12 @@
 from typing import Dict, Union
-import math
+
 
 def calculate_exit(
     final_year_ebitda: float,
     exit_multiple: float,
     debt: float,
     initial_equity: float,
-    years: int
+    years: int,
 ) -> Dict[str, Union[float, None]]:
     """
     Calculate terminal value, equity value, and IRR on exit.
@@ -20,7 +20,7 @@ def calculate_exit(
         raise ValueError("Initial equity must be > 0")
     if exit_multiple < 0:
         raise ValueError("Exit multiple must be non-negative")
-    
+
     terminal_value = final_year_ebitda * exit_multiple
     equity_value = terminal_value - debt
 
@@ -32,5 +32,5 @@ def calculate_exit(
     return {
         "Terminal Value": terminal_value,
         "Equity Value": equity_value,
-        "IRR": irr if equity_value > 0 else -1.0  # cap downside
+        "IRR": irr if equity_value > 0 else -1.0,  # cap downside
     }

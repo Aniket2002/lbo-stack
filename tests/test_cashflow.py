@@ -1,5 +1,7 @@
 import pytest
+
 from src.modules.cashflow import project_cashflows
+
 
 def test_project_cashflows_basic():
     # Simple 2-year projection with no amortization
@@ -12,7 +14,7 @@ def test_project_cashflows_basic():
         interest_rate=0.1,
         tax_rate=0.25,
         years=2,
-        debt_amort_schedule=[0.0, 0.0]
+        debt_amort_schedule=[0.0, 0.0],
     )
     # Year 1 checks
     y1 = results["Year 1"]
@@ -22,6 +24,7 @@ def test_project_cashflows_basic():
     assert pytest.approx(y1["Interest"], rel=1e-6) == 50.0 * 0.1
     assert y1["Debt Amortized"] == 0.0
     assert y1["Ending Debt"] == 50.0
+
 
 def test_project_cashflows_with_amortization():
     # 3-year projection with equal amortization
@@ -34,7 +37,7 @@ def test_project_cashflows_with_amortization():
         interest_rate=0.05,
         tax_rate=0.2,
         years=3,
-        debt_amort_schedule=[30.0, 30.0, 30.0]
+        debt_amort_schedule=[30.0, 30.0, 30.0],
     )
     # After full amortization, ending debt zero
     assert results["Year 3"]["Ending Debt"] == 0.0

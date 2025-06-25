@@ -1,11 +1,12 @@
 from typing import Dict
 
+
 def calculate_exit(
     final_year_ebitda: float,
     exit_multiple: float,
     debt: float,
     initial_equity: float,
-    years: int
+    years: int,
 ) -> Dict[str, float]:
     """
     Calculate terminal value, equity value, and IRR on exit.
@@ -27,8 +28,4 @@ def calculate_exit(
     # IRR calculation (always returns a float)
     irr = (equity_value / initial_equity) ** (1 / years) - 1
 
-    return {
-        "Terminal Value": terminal_value,
-        "Equity Value": equity_value,
-        "IRR": irr
-    }
+    return {"Terminal Value": terminal_value, "Equity Value": equity_value, "IRR": irr}

@@ -1,6 +1,7 @@
 import pytest
-import pandas as pd
+
 from src.modules.fund_waterfall import compute_waterfall_by_year, summarize_waterfall
+
 
 def test_waterfall_simple_no_carry():
     # Single-year, zero carry
@@ -14,7 +15,7 @@ def test_waterfall_simple_no_carry():
         distributions=dists,
         tiers=tiers,
         gp_commitment=0.02,
-        mgmt_fee_pct=0.0
+        mgmt_fee_pct=0.0,
     )
     assert len(wf) == 1
     assert wf[0]["LP Share"] == pytest.approx(120.0)
@@ -25,10 +26,11 @@ def test_waterfall_simple_no_carry():
         distributions=dists,
         tiers=tiers,
         gp_commitment=0.02,
-        mgmt_fee_pct=0.0
+        mgmt_fee_pct=0.0,
     )
     assert summary["Net IRR (LP)"] >= 0.0
     assert summary["MOIC"] == pytest.approx(1.2)
+
 
 def test_waterfall_clawback():
     # GP overpaid scenario triggers clawback
@@ -41,7 +43,7 @@ def test_waterfall_clawback():
         capital_calls=calls,
         distributions=dists,
         tiers=tiers,
-        gp_commitment=0.0
+        gp_commitment=0.0,
     )
     # Last row contains a Clawback column when triggered
     assert any("Clawback" in key for key in wf[-1].keys())
@@ -51,6 +53,6 @@ def test_waterfall_clawback():
         capital_calls=calls,
         distributions=dists,
         tiers=tiers,
-        gp_commitment=0.0
+        gp_commitment=0.0,
     )
     assert summary["Clawback Triggered"] is True

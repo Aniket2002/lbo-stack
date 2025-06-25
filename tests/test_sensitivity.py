@@ -1,6 +1,12 @@
-import pytest
 import pandas as pd
-from src.modules.sensitivity import run_sensitivity, results_to_dataframe, export_results, run_2d_sensitivity
+
+from src.modules.sensitivity import (
+    export_results,
+    results_to_dataframe,
+    run_2d_sensitivity,
+    run_sensitivity,
+)
+
 
 def test_run_sensitivity_irrs():
     base = {
@@ -13,20 +19,22 @@ def test_run_sensitivity_irrs():
         "wc_pct": 0.1,
         "tax_rate": 0.25,
         "exit_multiple": 8.0,
-        "interest_rate": 0.07
+        "interest_rate": 0.07,
     }
     results = run_sensitivity(base, "exit_multiple", [6.0, 8.0], years=2)
     assert len(results) == 2
     df = results_to_dataframe(results)
     assert list(df["Value"]) == [6.0, 8.0]
 
+
 def test_export_results(tmp_path):
-    data = [{"Param":"x","Value":1,"IRR":0.1}]
+    data = [{"Param": "x", "Value": 1, "IRR": 0.1}]
     csv_file = tmp_path / "out.csv"
     export_results(data, filename=str(csv_file))
     assert csv_file.exists()
     df = pd.read_csv(str(csv_file))
     assert df.loc[0, "Param"] == "x"
+
 
 def test_run_2d_sensitivity_shape():
     base = {
@@ -39,11 +47,9 @@ def test_run_2d_sensitivity_shape():
         "wc_pct": 0.1,
         "tax_rate": 0.25,
         "exit_multiple": 8.0,
-        "interest_rate": 0.07
+        "interest_rate": 0.07,
     }
     df2d = run_2d_sensitivity(
-        base, "rev_growth", [0.0, 0.1],
-        "exit_multiple", [6.0, 8.0],
-        years=2
+        base, "rev_growth", [0.0, 0.1], "exit_multiple", [6.0, 8.0], years=2
     )
     assert df2d.shape == (2, 2)
