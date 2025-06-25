@@ -180,7 +180,7 @@ def run(
         raw = json.loads(config.read_text())
         cfg = LBOConfig(**raw)
     except (json.JSONDecodeError, ValidationError) as e:
-        typer.secho(f"❌ Configuration error:\n{e}", fg=typer.colors.RED)
+        typer.secho(f"❌ Configuration error: \n{e}", fg=typer.colors.RED)
         raise typer.Exit(1)
 
     if dry_run:
@@ -223,12 +223,12 @@ def run(
     es = results["Exit Summary"]
     typer.secho("✅ LBO run complete", fg=typer.colors.GREEN)
     typer.echo(f"  Exit Year: {es['Exit Year']}")
-    typer.echo(f"  Equity: ${es['Equity Value']:,}")
+    typer.echo(f"  Equity: ${es['Equity Value']: , }")
     typer.echo(
-        f"  {typer.style('IRR:', fg=typer.colors.GREEN, bold=True)} {es['IRR']:.2%}"
+        f"  {typer.style('IRR:', fg=typer.colors.GREEN, bold=True)} {es['IRR']: .2%}"
     )
     typer.echo(
-        f"  {typer.style('MOIC:', fg=typer.colors.GREEN, bold=True)} {es['MOIC']:.2f}x"
+        f"  {typer.style('MOIC:', fg=typer.colors.GREEN, bold=True)} {es['MOIC']: .2f}x"
     )
 
 
@@ -251,7 +251,7 @@ def waterfall(
         raw = json.loads(config.read_text())
         cfg = WaterfallConfig(**raw)
     except (json.JSONDecodeError, ValidationError) as e:
-        typer.secho(f"❌ Configuration error:\n{e}", fg=typer.colors.RED)
+        typer.secho(f"❌ Configuration error: \n{e}", fg=typer.colors.RED)
         raise typer.Exit(1)
 
     if dry_run:
@@ -316,9 +316,9 @@ def waterfall(
         raise typer.Exit(2)
 
     typer.secho("✅ Waterfall complete", fg=typer.colors.GREEN)
-    typer.echo(f"  Net LP IRR: {summary['Net IRR (LP)']:.2%}")
-    typer.echo(f"  MOIC: {summary['MOIC']:.2f}x")
-    typer.echo(f"  GP Carry: {summary['Cumulative GP Carry']:.2f}")
+    typer.echo(f"  Net LP IRR: {summary['Net IRR (LP)']: .2%}")
+    typer.echo(f"  MOIC: {summary['MOIC']: .2f}x")
+    typer.echo(f"  GP Carry: {summary['Cumulative GP Carry']: .2f}")
 
 
 # ─── sensitivity ──────────────────────────────────────────────────────

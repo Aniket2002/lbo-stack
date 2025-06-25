@@ -219,15 +219,15 @@ class LBOModel:
                 icr = ebitda / total_interest
                 if icr < self.icr_hurdle:
                     raise CovenantBreachError(
-                        f"Year {year}: ICR {icr:.2f} below {self.icr_hurdle}"
+                        f"Year {year}: ICR {icr: .2f} below {self.icr_hurdle}"
                     )
             if self.ltv_hurdle is not None:
                 current_ev = ebitda * self.exit_multiple
                 total_debt = sum(t.debt for t in self.debt_tranches)
                 if total_debt > current_ev:
                     raise CovenantBreachError(
-                        f"Year {year}: LTV breach—debt {total_debt:.2f} > EV×multiple "
-                        f"{current_ev:.2f}"
+                        f"Year {year}: LTV breach—debt {total_debt: .2f} > EV×multiple "
+                        f"{current_ev: .2f}"
                     )
 
             # 4) Tax & levered CF
@@ -339,7 +339,7 @@ class LBOModel:
         es = self.run()["Exit Summary"]
         return (
             f"Exit Year: {es['Exit Year']}\n"
-            f"Equity Value: ${es['Equity Value']:,.0f}\n"
-            f"IRR: {es['IRR']:.2%}\n"
-            f"MOIC: {es['MOIC']:.2f}x\n"
+            f"Equity Value: ${es['Equity Value']: , .0f}\n"
+            f"IRR: {es['IRR']: .2%}\n"
+            f"MOIC: {es['MOIC']: .2f}x\n"
         )

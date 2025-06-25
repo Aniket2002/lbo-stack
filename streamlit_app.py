@@ -139,12 +139,12 @@ with tab1:
         col1, col2, col3 = st.columns(3)
         col1.metric(
             "LP IRR",
-            f"{summary['Net IRR (LP)']:.2%}",
+            f"{summary['Net IRR (LP)']: .2%}",
             delta_color="normal" if summary["Net IRR (LP)"] >= hurdle else "off",
         )
-        col2.metric("MOIC (LP)", f"{summary['MOIC']:.2f}x")
+        col2.metric("MOIC (LP)", f"{summary['MOIC']: .2f}x")
         gp_carry = summary.get("Cumulative GP Carry", 0.0)
-        col3.metric("GP Carry", f"${gp_carry:,}")
+        col3.metric("GP Carry", f"${gp_carry: , }")
 
         st.dataframe(pd.DataFrame(breakdown), use_container_width=True)
 
@@ -178,7 +178,7 @@ with tab2:
         )
         try:
             lbo_res = model.run(years=model_horizon)
-            irr_str = f"{lbo_res['Exit Summary']['IRR']:.2%}"
+            irr_str = f"{lbo_res['Exit Summary']['IRR']: .2%}"
         except InsolvencyError:
             irr_str = "—"
 
@@ -196,8 +196,8 @@ with tab2:
             {
                 "Scenario": name,
                 "LBO IRR": irr_str,
-                "Fund IRR": f"{fund_res['Net IRR (LP)']:.2%}",
-                "MOIC": f"{fund_res['MOIC']:.2f}x",
+                "Fund IRR": f"{fund_res['Net IRR (LP)']: .2%}",
+                "MOIC": f"{fund_res['MOIC']: .2f}x",
                 "Clawback": "Yes" if fund_res["Clawback Triggered"] else "No",
             }
         )
@@ -259,12 +259,14 @@ with tab3:
         buf = io.StringIO()
         buf.write(f"# 📝 Memo: {name}\n\n")
         buf.write("### Key Metrics\n")
-        buf.write(f"- Net IRR (LP): {sumry['Net IRR (LP)']:.2%}\n")
+        buf.write(f"- Net IRR (LP): {sumry['Net IRR (LP)']: .2%}\n")
         gross = sumry.get("Gross IRR", None)
         buf.write(
-            f"- Gross IRR: {gross:.2%}\n" if gross is not None else "- Gross IRR: N/A\n"
+            f"- Gross IRR: {gross: .2%}\n"
+            if gross is not None
+            else "- Gross IRR: N/A\n"
         )
-        buf.write(f"- MOIC: {sumry['MOIC']:.2f}x\n")
+        buf.write(f"- MOIC: {sumry['MOIC']: .2f}x\n")
         buf.write(f"- Clawback: {'Yes' if sumry['Clawback Triggered'] else 'No'}\n\n")
         buf.write("### Waterfall Table\n")
         buf.write("<div style='overflow-x:auto'>\n")

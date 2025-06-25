@@ -173,6 +173,6 @@ def run_2d_sensitivity(
 
     if len(combos) >= 10_000:
         duration = time.time() - start
-        assert duration < 2.0, f"run_2d_sensitivity too slow: {duration:.3f}s"
+        assert duration < 2.0, f"run_2d_sensitivity too slow: {duration: .3f}s"
 
     return pivot
