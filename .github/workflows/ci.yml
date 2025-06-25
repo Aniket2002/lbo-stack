@@ -38,5 +38,6 @@ jobs:
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@v4
         with:
+          token: 1b97881c-deab-4467-9d50-3eca6f23a2db
           files: coverage.xml
           fail_ci_if_error: true
