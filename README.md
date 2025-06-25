@@ -1,4 +1,4 @@
-````markdown
+``
 <h1 align="center">
   LBO & Fund Waterfall Simulator 🦄
 </h1>
@@ -149,5 +149,4 @@ All figures in the manuscript are reproducible via `notebooks/paper_figures.ipyn
 
 MIT — free to use, fork, and improve. Just throw a ⭐ if it saves your Monday.
 
-```
 ```
