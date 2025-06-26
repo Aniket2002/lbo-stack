@@ -1,10 +1,13 @@
+# === IMPORTS & CONFIG ===
 import io
-import json
+import logging
 import os
-from typing import Any, Dict, List, cast
+import time
+from typing import Any, Dict, List
 
 import markdown2
 import pandas as pd
+import plotly.express as px
 import plotly.graph_objects as go
 import streamlit as st
 from weasyprint import HTML
@@ -13,306 +16,368 @@ from src.modules.fund_waterfall import compute_waterfall_by_year, summarize_wate
 from src.modules.lbo_model import InsolvencyError, LBOModel
 
 os.environ["STREAMLIT_WATCHER_TYPE"] = "poll"
+logging.basicConfig(level=logging.INFO)
+
+# === DEFAULTS ===
+# Updated to 2/20 demo with super-carry tier
+DEFAULTS = {
+    "revenue": 50_000_000.0,
+    "ebitda_margin": 0.20,
+    "capex_pct": 0.05,
+    "wc_pct": 0.10,
+    "tax_rate": 0.25,
+    "exit_multiple": 8.0,
+    "interest_rate": 0.07,
+    "hurdle": 0.08,
+    "rev_growth": 0.10,
+    "tiers": [
+        {"type": "irr", "rate": 0.08, "carry": 0.20},  # 8% hurdle @20% carry
+        {"type": "irr", "rate": 0.15, "carry": 0.30},  # 15% hurdle @30% carry
+    ],
+}
 
 st.set_page_config(page_title="PE Fund Waterfall Studio", layout="wide")
 st.title("💰 Private Equity Fund Waterfall Studio")
 
 
-# ───────────────────────────────────────────────────────────────
-@st.cache_data(ttl=3600, show_spinner=False, max_entries=5)
+# === CACHING HELPERS ===
+@st.cache_data(ttl=3600)
 def convert_md_to_pdf(memo_md: str) -> bytes:
-    """Convert Markdown to PDF (cached)."""
     html = markdown2.markdown(memo_md)
     buf = io.BytesIO()
     HTML(string=html).write_pdf(buf)
     return buf.getvalue()
 
 
-# ───────────────────────────────────────────────────────────────
-with st.sidebar.form("sim_form"):
-    st.header("🧮 Fund & Deal Parameters")
+@st.cache_data(ttl=3600)
+def get_waterfall(committed_capital, calls, dists, tiers, **kwargs):
+    return compute_waterfall_by_year(committed_capital, calls, dists, tiers, **kwargs)
+
+
+@st.cache_data(ttl=3600)
+def get_summary(committed_capital, calls, dists, tiers, **kwargs):
+    return summarize_waterfall(committed_capital, calls, dists, tiers, **kwargs)
+
+
+@st.cache_data(ttl=3600)
+def run_lbo_model(config: Dict[str, Any], years: int = 5):
+    allowed = LBOModel.__init__.__code__.co_varnames
+    clean_cfg = {k: v for k, v in config.items() if k in allowed}
+    model = LBOModel(**clean_cfg)
+    return model.run(years=years)
+
+
+# === UTIL FUNCTIONS ===
+def compare_scenarios_chart(df: pd.DataFrame) -> go.Figure:
+    fig = px.bar(
+        df,
+        x="Scenario",
+        y=["Fund IRR", "LBO IRR"],
+        barmode="group",
+        labels={"value": "IRR (%)", "variable": "Metric"},
+        text_auto=True,
+        title="IRR Comparison by Scenario",
+    )
+    fig.update_layout(template="simple_white", height=400, legend_title="")
+    return fig
+
+
+# === SIDEBAR ===
+with st.sidebar:
+    st.header("📘 Deal & Waterfall Inputs")
+    # 2/20 demo defaults
     committed_capital = st.number_input(
-        "Committed Capital ($)", 100_000_000.0, step=1_000_000.0, format="%.0f"
+        "Committed Capital ($)", 1e6, value=100_000_000.0, step=1e6, format="%.0f"
     )
-    debt_pct = st.slider("Leverage (%)", 0.0, 0.95, 0.6, step=0.05)
-    gp_commitment = st.slider("GP Commitment (%)", 0.0, 0.2, 0.02, step=0.01)
-    mgmt_fee_pct = st.slider("Management Fee (%)", 0.0, 0.05, 0.02, step=0.005)
-    reset_hurdle = st.checkbox("Reset Hurdle After Each Tier?", value=False)
-    cashless = st.checkbox("Cashless Carry (Accrue only)?", value=False)
-    revolver_limit = st.number_input("Revolver Limit ($)", 0.0, step=1_000_000.0)
-    revolver_rate = st.number_input("Revolver Rate (%)", 0.0, step=0.01)
-    pik_rate = st.number_input("PIK Rate (%)", 0.0, step=0.01)
+    debt_pct = st.slider("Leverage (%)", 0.0, 0.95, value=0.7, step=0.05)
+    model_horizon = st.number_input("Model Horizon (yrs)", 1, 20, value=7, step=1)
 
-    st.markdown("### 📐 Tiered Carry Structure")
-    default_tiers = (
-        '[{"type":"irr","rate":0.08,"carry":0.20}, '
-        '{"type":"irr","rate":0.12,"carry":0.30}]'
+    st.subheader("Fees & Tiers")
+    gp_commitment = st.slider("GP Commitment (%)", 0.0, 0.2, value=0.05, step=0.01)
+    mgmt_fee_pct = st.slider("Mgmt Fee (%)", 0.0, 0.05, value=0.02, step=0.005)
+    reset_hurdle = st.checkbox("Reset Hurdle?", value=True)
+    cashless = st.checkbox("Cashless Carry?", value=True)
+    tiers = st.data_editor(pd.DataFrame(DEFAULTS["tiers"]), key="tiers_editor").to_dict(
+        "records"
     )
-    tiers_json = st.text_area("Paste Tiers JSON", default_tiers, height=120)
 
-    model_horizon = st.number_input("Model Horizon (yrs)", 1, 20, 5, step=1)
-    st.form_submit_button("Apply Settings")
+    use_lbo = st.checkbox("Use LBO Engine for Distributions", value=False)
+    if use_lbo:
+        st.subheader("LBO Assumptions")
+        revolver_limit = st.number_input("Revolver Limit ($)", 0.0, step=1e6)
+        revolver_rate = st.number_input("Revolver Rate (%)", 0.0, step=0.01)
+        pik_rate = st.number_input("PIK Rate (%)", 0.0, step=0.01)
+        rev_growth = st.number_input(
+            "Rev Growth (%)", 0.0, 1.0, DEFAULTS["rev_growth"], step=0.01
+        )
+        exit_multiple = st.number_input(
+            "Exit Multiple", 1.0, 20.0, DEFAULTS["exit_multiple"], step=0.5
+        )
+    else:
+        revolver_limit = revolver_rate = pik_rate = rev_growth = exit_multiple = 0.0
 
-
-# rebuild tables on horizon change
+# === DATAFRAME INIT ===
 if (
     "calls_df" not in st.session_state
-    or st.session_state.calls_df.shape[0] != model_horizon
+    or len(st.session_state.calls_df) != model_horizon
 ):
-    base_calls = [committed_capital * (1 - gp_commitment)] + [0.0] * (model_horizon - 1)
-    st.session_state.calls_df = pd.DataFrame({"Capital Call": base_calls})
-
+    st.session_state.calls_df = pd.DataFrame(
+        {
+            "Capital Call": [committed_capital * (1 - gp_commitment)]
+            + [0.0] * (model_horizon - 1)
+        }
+    )
 if (
     "dists_df" not in st.session_state
-    or st.session_state.dists_df.shape[0] != model_horizon
+    or len(st.session_state.dists_df) != model_horizon
 ):
-    base_dists = [0.0] * (model_horizon - 1) + [committed_capital * 1.6]
-    st.session_state.dists_df = pd.DataFrame({"Distribution": base_dists})
-
-
-tab1, tab2, tab3 = st.tabs(["📊 Simulator", "🧠 Compare Scenarios", "📄 Memo + PDF"])
-
-
-# ───────────────────────────────────────────────────────────────
-with tab1:
-    st.header("📊 LBO + Fund Waterfall Simulator")
-
-    use_lbo = st.checkbox(
-        "Use LBO Engine for Distributions",
-        value=False,
-        help="Override manual distributions using FCFs from your LBO model.",
+    st.session_state.dists_df = pd.DataFrame(
+        {"Distribution": [0.0] * (model_horizon - 1) + [committed_capital * 1.6]}
     )
 
-    st.markdown("### 📆 Capital Calls & Distributions")
+calls_df = st.session_state.calls_df.copy()
+dists_df = st.session_state.dists_df.copy()
+
+# === TABS ===
+tab1, tab2, tab3 = st.tabs(["📊 Simulator", "🧠 Compare Scenarios", "📄 Memo + PDF"])
+
+# === TAB 1: Simulator ===
+with tab1:
+    st.header("📊 LBO + Fund Waterfall Simulator")
     c1, c2 = st.columns(2)
-
-    with c1:
-        calls_df = st.data_editor(
-            st.session_state.calls_df.copy(),
-            key="calls_table",
-            use_container_width=True,
-        )
-    with c2:
-        dists_df = st.data_editor(
-            st.session_state.dists_df.copy(),
-            key="dists_table",
-            use_container_width=True,
-        )
-
-    try:
-        tiers = cast(List[Dict[str, float]], json.loads(tiers_json))
-    except Exception:
-        st.error("⚠️ Invalid JSON for tiers; please fix.")
-        tiers = []
+    calls_df = c1.data_editor(calls_df, key="calls_sim")
+    dists_df = c2.data_editor(dists_df, key="dists_sim")
 
     if calls_df["Capital Call"].sum() > committed_capital * 1.1:
-        st.error("❌ Total calls exceed committed capital by >10%!")
+        st.error("❌ Calls exceed committed capital by >10%!")
 
     if st.button("▶️ Run Simulation"):
-        ev = committed_capital / (1 - debt_pct)
         calls = calls_df["Capital Call"].tolist()
         dists = dists_df["Distribution"].tolist()
 
-        breakdown = compute_waterfall_by_year(
-            committed_capital,
-            calls,
-            dists,
-            tiers,
-            gp_commitment,
-            mgmt_fee_pct,
-            reset_hurdle=reset_hurdle,
-            cashless=cashless,
-        )
-        summary = summarize_waterfall(
-            committed_capital,
-            calls,
-            dists,
-            tiers,
-            gp_commitment,
-            mgmt_fee_pct,
-            reset_hurdle=reset_hurdle,
-            cashless=cashless,
-        )
+        if use_lbo:
+            cfg = {
+                "enterprise_value": committed_capital / (1 - debt_pct),
+                "debt_pct": debt_pct,
+                "revenue": DEFAULTS["revenue"],
+                "rev_growth": rev_growth,
+                "ebitda_margin": DEFAULTS["ebitda_margin"],
+                "capex_pct": DEFAULTS["capex_pct"],
+                "wc_pct": DEFAULTS["wc_pct"],
+                "tax_rate": DEFAULTS["tax_rate"],
+                "exit_multiple": exit_multiple,
+                "interest_rate": DEFAULTS["interest_rate"],
+                "revolver_limit": revolver_limit,
+                "revolver_rate": revolver_rate,
+                "pik_rate": pik_rate,
+            }
+            try:
+                lbo_res = run_lbo_model(cfg, model_horizon)
+                dists = [
+                    lbo_res[f"Year {i}"]["Equity CF"]
+                    for i in range(1, model_horizon + 1)
+                ]
+                st.success("✅ Replaced with LBO Equity CFs")
+                # Display as table
+                cf_df = pd.DataFrame(
+                    {"Year": list(range(1, model_horizon + 1)), "Equity CF": dists}
+                )
+                cf_df["Equity CF"] = cf_df["Equity CF"].map(lambda x: f"${x:,.0f}")
+                st.table(cf_df)
+            except InsolvencyError as e:
+                st.error(f"LBO failed: {e}")
+                st.stop()
 
-        # KPIs vs an 8% hurdle
-        hurdle = 0.08
-        col1, col2, col3 = st.columns(3)
-        col1.metric(
-            "LP IRR",
-            f"{summary['Net IRR (LP)']: .2%}",
-            delta_color="normal" if summary["Net IRR (LP)"] >= hurdle else "off",
+        start = time.time()
+        breakdown = get_waterfall(
+            committed_capital,
+            calls,
+            dists,
+            tiers,
+            gp_commitment=gp_commitment,
+            mgmt_fee_pct=mgmt_fee_pct,
+            reset_hurdle=reset_hurdle,
+            cashless=cashless,
         )
-        col2.metric("MOIC (LP)", f"{summary['MOIC']:.2f}x")  # noqa: E231
-        gp_carry = summary.get("Cumulative GP Carry", 0.0)
-        col3.metric("GP Carry", f"${gp_carry:,}")  # noqa: E231
+        summary = get_summary(
+            committed_capital,
+            calls,
+            dists,
+            tiers,
+            gp_commitment=gp_commitment,
+            mgmt_fee_pct=mgmt_fee_pct,
+            reset_hurdle=reset_hurdle,
+            cashless=cashless,
+        )
+        st.success(f"✅ Completed in {time.time()-start:.2f}s")
+
+        m1, m2, m3 = st.columns(3)
+        m1.metric("LP IRR", f"{summary['Net IRR (LP)']:.2%}")
+        m2.metric("MOIC", f"{summary['MOIC']:.2f}x")
+        m3.metric("GP Carry", f"${summary['Cumulative GP Paid']:,}")
 
         st.dataframe(pd.DataFrame(breakdown), use_container_width=True)
 
-
-# ───────────────────────────────────────────────────────────────
+# === TAB 2: Compare Scenarios ===
 with tab2:
     st.header("🧠 Compare Scenarios")
     presets = {
-        "Base": {"rev_growth": 0.10, "exit_mult": 8.0},
-        "Aggressive": {"rev_growth": 0.15, "exit_mult": 9.0},
-        "Clawback": {"rev_growth": 0.05, "exit_mult": 6.5},
+        "Bear Case": {"rev_growth": 0.02, "exit_mult": 5.0},  # loss + clawback
+        "Base Case": {"rev_growth": 0.10, "exit_mult": 8.0},  # clears 8% hurdle
+        "Bull Case": {"rev_growth": 0.20, "exit_mult": 10.0},  # hits 2nd tier carry
     }
 
-    rows = []
-    for name, cfg in presets.items():
-        ev = committed_capital / (1 - debt_pct)
-        model = LBOModel(
-            enterprise_value=ev,
-            debt_pct=debt_pct,
-            revenue=50e6,
-            rev_growth=cfg["rev_growth"],
-            ebitda_margin=0.20,
-            capex_pct=0.05,
-            wc_pct=0.10,
-            tax_rate=0.25,
-            exit_multiple=cfg["exit_mult"],
-            interest_rate=0.07,
-            revolver_limit=revolver_limit,
-            revolver_rate=revolver_rate,
-            pik_rate=pik_rate,
-        )
+    rows: List[Dict[str, Any]] = []
+    base_fund_irr = None
+    for name, p in presets.items():
+        cfg = {
+            "enterprise_value": committed_capital / (1 - debt_pct),
+            "debt_pct": debt_pct,
+            "revenue": DEFAULTS["revenue"],
+            "rev_growth": p["rev_growth"],
+            "ebitda_margin": DEFAULTS["ebitda_margin"],
+            "capex_pct": DEFAULTS["capex_pct"],
+            "wc_pct": DEFAULTS["wc_pct"],
+            "tax_rate": DEFAULTS["tax_rate"],
+            "exit_multiple": p["exit_mult"],
+            "interest_rate": DEFAULTS["interest_rate"],
+            "revolver_limit": 0,
+            "revolver_rate": 0,
+            "pik_rate": 0,
+        }
         try:
-            lbo_res = model.run(years=model_horizon)
-            irr_str = f"{lbo_res['Exit Summary']['IRR']: .2%}"
-        except InsolvencyError:
-            irr_str = "—"
+            lbo_res = run_lbo_model(cfg, years=model_horizon)
+            cf_vals = [
+                lbo_res[f"Year {i}"]["Equity CF"] for i in range(1, model_horizon + 1)
+            ]
+            cf_df = pd.DataFrame(
+                {"Year": range(1, model_horizon + 1), "Equity CF": cf_vals}
+            )
+            cf_df["Equity CF"] = cf_df["Equity CF"].map(lambda x: f"${x:,.0f}")
+            st.subheader(f"Equity CFs ({name})")
+            st.table(cf_df)
+            irr_lbo = lbo_res["Exit Summary"]["IRR"] or 0.0
+        except Exception:
+            irr_lbo = 0.0
+            cf_vals = [0.0] * model_horizon
 
-        fund_res = summarize_waterfall(
-            committed_capital,
-            calls_df["Capital Call"].tolist(),
-            dists_df["Distribution"].tolist(),
-            tiers,
-            gp_commitment,
-            mgmt_fee_pct,
-            reset_hurdle=reset_hurdle,
-            cashless=cashless,
+        calls_s = [committed_capital * (1 - gp_commitment)] + [0.0] * (
+            model_horizon - 1
         )
+        fund = get_summary(
+            committed_capital,
+            calls_s,
+            cf_vals,
+            tiers,
+            gp_commitment=gp_commitment,
+            mgmt_fee_pct=mgmt_fee_pct,
+        )
+        irr_fund = fund["Net IRR (LP)"] * 100
+        if name == "Base":
+            base_fund_irr = irr_fund
+
         rows.append(
             {
                 "Scenario": name,
-                "LBO IRR": irr_str,
-                "Fund IRR": f"{fund_res['Net IRR (LP)']: .2%}",
-                "MOIC": f"{fund_res['MOIC']: .2f}x",
-                "Clawback": "Yes" if fund_res["Clawback Triggered"] else "No",
+                "LBO IRR": round(irr_lbo * 100, 2),
+                "Fund IRR": round(irr_fund, 2),
+                "MOIC": round(fund["MOIC"], 2),
+                "Clawback": "✅" if not fund["Clawback Triggered"] else "❌",
+                "Comment": (
+                    "—"
+                    if name == "Base"
+                    else (
+                        "📈 Better than base"
+                        if base_fund_irr is not None and irr_fund > base_fund_irr
+                        else "📉 Worse than base"
+                    )
+                ),
             }
         )
 
-    st.dataframe(pd.DataFrame(rows), use_container_width=True)
+    df_comp = pd.DataFrame(rows)
+    st.dataframe(
+        df_comp.style.highlight_max(
+            axis=0, subset=["Fund IRR", "MOIC"], color="lightgreen"
+        ),
+        use_container_width=True,
+    )
+    st.plotly_chart(compare_scenarios_chart(df_comp), use_container_width=True)
 
-
-# ───────────────────────────────────────────────────────────────
+# === TAB 3: Memo + PDF ===
 with tab3:
     st.header("📄 Export Memo & PDF")
     scenario = st.selectbox("Choose Scenario", list(presets.keys()))
-    cfg = presets[scenario]
-
-    ev = committed_capital / (1 - debt_pct)
-    model = LBOModel(
-        enterprise_value=ev,
-        debt_pct=debt_pct,
-        revenue=50e6,
-        rev_growth=cfg["rev_growth"],
-        ebitda_margin=0.20,
-        capex_pct=0.05,
-        wc_pct=0.10,
-        tax_rate=0.25,
-        exit_multiple=cfg["exit_mult"],
-        interest_rate=0.07,
-        revolver_limit=revolver_limit,
-        revolver_rate=revolver_rate,
-        pik_rate=pik_rate,
-    )
+    p = presets[scenario]
     try:
-        _ = model.run(years=model_horizon)
+        model_cfg = {
+            **DEFAULTS,
+            "enterprise_value": committed_capital / (1 - debt_pct),
+            "debt_pct": debt_pct,
+            "rev_growth": p["rev_growth"],
+            "exit_multiple": p["exit_mult"],
+            "revolver_limit": revolver_limit,
+            "revolver_rate": revolver_rate,
+            "pik_rate": pik_rate,
+        }
+        res = run_lbo_model(model_cfg, years=model_horizon)
+        dists_m = [res[f"Year {i}"]["Equity CF"] for i in range(1, model_horizon + 1)]
     except InsolvencyError:
-        pass
+        dists_m = dists_df["Distribution"].tolist()
 
-    breakdown = compute_waterfall_by_year(
+    breakdown = get_waterfall(
         committed_capital,
         calls_df["Capital Call"].tolist(),
-        dists_df["Distribution"].tolist(),
+        dists_m,
         tiers,
-        gp_commitment,
-        mgmt_fee_pct,
+        gp_commitment=gp_commitment,
+        mgmt_fee_pct=mgmt_fee_pct,
         reset_hurdle=reset_hurdle,
         cashless=cashless,
     )
-    summary = summarize_waterfall(
+    summary = get_summary(
         committed_capital,
         calls_df["Capital Call"].tolist(),
-        dists_df["Distribution"].tolist(),
+        dists_m,
         tiers,
-        gp_commitment,
-        mgmt_fee_pct,
+        gp_commitment=gp_commitment,
+        mgmt_fee_pct=mgmt_fee_pct,
         reset_hurdle=reset_hurdle,
         cashless=cashless,
     )
 
-    def generate_memo(
-        sumry: Dict[str, Any], tbl: List[Dict[str, Any]], name: str
-    ) -> str:
+    def gen_memo(s, tbl, name):
         buf = io.StringIO()
         buf.write(f"# 📝 Memo: {name}\n\n")
         buf.write("### Key Metrics\n")
-        buf.write(f"- Net IRR (LP): {sumry['Net IRR (LP)']: .2%}\n")
-        gross = sumry.get("Gross IRR", None)
-        buf.write(
-            f"- Gross IRR: {gross: .2%}\n"
-            if gross is not None
-            else "- Gross IRR: N/A\n"
-        )
-        buf.write(f"- MOIC: {sumry['MOIC']: .2f}x\n")
-        buf.write(f"- Clawback: {'Yes' if sumry['Clawback Triggered'] else 'No'}\n\n")
+        buf.write(f"- Net IRR (LP): {s['Net IRR (LP)']: .2%}\n")
+        buf.write(f"- MOIC: {s['MOIC']: .2f}x\n")
+        buf.write(f"- Clawback: {'Yes' if s['Clawback Triggered'] else 'No'}\n\n")
         buf.write("### Waterfall Table\n")
-        buf.write("<div style='overflow-x:auto'>\n")
         buf.write(pd.DataFrame(tbl).to_markdown(index=False))
-        buf.write("\n</div>\n")
         return buf.getvalue()
 
-    memo_md = generate_memo(summary, breakdown, scenario)
-    st.download_button(
-        "📥 Download Memo (.md)", memo_md, file_name=f"{scenario}_memo.md", key="md_dl"
-    )
+    memo = gen_memo(summary, breakdown, scenario)
+    st.download_button("📥 Download Memo (.md)", memo, file_name=f"{scenario}_memo.md")
     st.download_button(
         "📄 Download Memo (.pdf)",
-        convert_md_to_pdf(memo_md),
+        convert_md_to_pdf(memo),
         file_name=f"{scenario}_memo.pdf",
         mime="application/pdf",
-        key="pdf_dl",
     )
 
     st.markdown("### 📈 Waterfall Chart")
     df = pd.DataFrame(breakdown)
-
-    # ────── guard missing LP/GP Share columns ──────
-    lp_col = "LP Share" if "LP Share" in df.columns else None
-    gp_col = "GP Share" if "GP Share" in df.columns else None
-    if lp_col and gp_col:
-        df["Total"] = df[lp_col] + df[gp_col]
-    else:
-        # fallback to sum of all numeric columns
-        df["Total"] = df.select_dtypes("number").sum(axis=1)
-
     fig = go.Figure()
-    if lp_col:
-        fig.add_trace(go.Bar(x=df["Year"], y=df[lp_col] / 1e6, name="LP Share"))
-    if gp_col:
-        fig.add_trace(
-            go.Bar(
-                x=df["Year"],
-                y=df[gp_col] / 1e6,
-                name="GP Share",
-                marker_color=df[gp_col].apply(lambda x: "red" if x < 0 else "green"),
-            )
-        )
+    for col in ["LP Share", "GP Share"]:
+        if col in df.columns:
+            fig.add_trace(go.Bar(x=df["Year"], y=df[col] / 1e6, name=col))
     fig.add_trace(
         go.Scatter(
-            x=df["Year"], y=df["Total"] / 1e6, name="Total", mode="lines+markers"
+            x=df["Year"],
+            y=df.select_dtypes(float).sum(axis=1) / 1e6,
+            name="Total",
+            mode="lines+markers",
         )
     )
     fig.update_layout(
@@ -322,6 +387,5 @@ with tab3:
         legend_title="Components",
     )
     st.plotly_chart(fig, use_container_width=True)
-
 
 st.caption("Built by Aniket Bhardwaj — [GitHub](https://github.com/Aniket2002)")

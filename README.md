@@ -132,22 +132,3 @@ Pure-Python, stateless; swap any component with QuantLib, Pandas, etc.
 
 *(Open to PRs 👏 – raise an issue if you want to tackle an item.)*
 
----
-
-## 7 · Hire me 🍻
-
-I’m **Aniket Bhardwaj** – ex-Volkswagen DevOps engineer turned quant-finance builder.
-If this repo shows the **rigour × product polish** your team values, drop me a line:
-
-* **Email:** [bhardwaj.aniket2002@gmail.com](mailto:bhardwaj.aniket2002@gmail.com)
-* **LinkedIn:** [https://www.linkedin.com/in/aniket-bhardwaj-b002/](https://www.linkedin.com/in/aniket-bhardwaj-b002/)
-
-> *“Let’s ship the future of PE analytics together.”*
-
----
-
-## License
-
-MIT – free to fork, star, and improve.
-Give it a ⭐ if it saves your Monday.
-
