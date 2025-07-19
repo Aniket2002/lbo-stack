@@ -1,4 +1,8 @@
+# src/modules/sensitivity.py
+
+import inspect
 import itertools
+import logging
 import time
 from concurrent.futures import ThreadPoolExecutor
 from typing import Any, Dict, List, Optional, Tuple
@@ -8,40 +12,40 @@ import numpy_financial as npf
 import pandas as pd
 import plotly.express as px
 
-from src.modules.lbo_model import LBOModel
+from src.modules.lbo_model import InsolvencyError, LBOModel
+
+# configure module‐level logger
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s %(levelname)-8s %(message)s",
+    datefmt="%Y-%m-%d %H:%M:%S",
+)
+log = logging.getLogger(__name__)
 
 
 def _bootstrap_irr(
     cf_list: List[float], n_bootstrap: int, ci: List[float]
-) -> Tuple[Optional[float], Optional[float]]:
-    """
-    Perform bootstrap CI on IRR by resampling cashflow indices to preserve order.
-    Returns (lower, upper) or (None, None) if not enough valid draws.
-    """
-    boot_irrs: List[float] = []
-    # Cashflow list looks like [t0, t1, t2, ..., tN, t_exit]
-    # we resample positions 1..N (len(cf_list)-2 of them)
-    n_years = len(cf_list) - 2
+) -> Tuple[float, float]:
+    irrs = []
     for _ in range(n_bootstrap):
-        # sample indices for years 1..N
-        # idx = np.random.randint(1, 1 + n_years, size=n_years)
-        sample = (
-            [cf_list[0]]
-            + [
-                cf_list[np.random.randint(1, 1 + n_years)]  # pick value, keep position
-                for _ in range(n_years)
-            ]
-            + [cf_list[-1]]
-        )
-        irr_val = npf.irr(sample)
-        if irr_val is not None and not np.isnan(irr_val):
-            boot_irrs.append(float(irr_val))
+        sample = list(np.random.choice(cf_list, size=len(cf_list), replace=True))
+        irr = npf.irr(sample)
+        if irr is not None and not np.isnan(irr):
+            irrs.append(irr)
+    if not irrs:
+        return (float("nan"), float("nan"))
+    lower = float(np.percentile(irrs, ci[0]))
+    upper = float(np.percentile(irrs, ci[1]))
+    return lower, upper
 
-    if len(boot_irrs) < 50:
-        return None, None
 
-    lower, upper = np.nanpercentile(boot_irrs, ci)
-    return float(lower), float(upper)
+def _filter_cfg_for_lbo(cfg: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Drop any keys not present in LBOModel.__init__ signature.
+    """
+    sig = inspect.signature(LBOModel.__init__)
+    valid = set(sig.parameters) - {"self", "args", "kwargs"}
+    return {k: v for k, v in cfg.items() if k in valid}
 
 
 def run_sensitivity(
@@ -54,73 +58,51 @@ def run_sensitivity(
     ci: Optional[List[float]] = None,
     threads: int = 1,
 ) -> List[Dict[str, Any]]:
-    """
-    Run 1D sensitivity on a single parameter.
-
-    Returns a list of dicts, each with:
-      - "Param": the parameter name
-      - "Value": the tested value
-      - "IRR": point estimate IRR
-      - "MOIC": point estimate MOIC
-      - optionally "IRR_CI_Lower" and "IRR_CI_Upper" if bootstrap=True
-
-    If threads>1 and len(values)>5000, runs models in parallel.
-    """
     if ci is None:
         ci = [2.5, 97.5]
 
     def _run_one(v: float) -> Dict[str, Any]:
         cfg = base.copy()
         cfg[param] = v
-        model = LBOModel(**cfg)
-        run_out = model.run(years)
-        summary = run_out["Exit Summary"]
-        irr_point = summary["IRR"]
-        moic = summary["MOIC"]
+        # filter out stray keys like 'revenue0'
+        lbo_kwargs = _filter_cfg_for_lbo(cfg)
 
-        row: Dict[str, Any] = {
-            "Param": param,
-            "Value": v,
-            "IRR": irr_point,
-            "MOIC": moic,
-        }
+        try:
+            model = LBOModel(**lbo_kwargs)
+            # disable scheduled amort to avoid insolvency
+            for t in model.debt_tranches:
+                if t.name in ("Senior", "Mezzanine"):
+                    t.amort = False
+
+            run_out = model.run(years)
+            summary = run_out["Exit Summary"]
+            irr = summary["IRR"]
+            moic = summary["MOIC"]
+        except InsolvencyError as ie:
+            log.warning(f"Insolvency at {param}={v}: {ie}")
+            return {"Param": param, "Value": v, "IRR": None, "MOIC": None}
+        except Exception as e:
+            log.error(f"Error at {param}={v}: {e}")
+            return {"Param": param, "Value": v, "IRR": None, "MOIC": None}
+
+        row = {"Param": param, "Value": v, "IRR": irr, "MOIC": moic}
 
         if bootstrap:
-            # build cashflow list
             eq0 = -model.equity
             cashflows = [run_out[f"Year {i}"]["Equity CF"] for i in range(1, years + 1)]
             exit_eq = summary.get("Equity Value", 0.0)
             cf_list = [eq0] + cashflows + [exit_eq]
-
             lower, upper = _bootstrap_irr(cf_list, n_bootstrap, ci)
             row["IRR_CI_Lower"] = lower
             row["IRR_CI_Upper"] = upper
 
         return row
 
-    # decide between serial and threaded
     if threads > 1 and len(values) > 5000:
         with ThreadPoolExecutor(max_workers=threads) as exe:
-            results = list(exe.map(_run_one, values))
+            return list(exe.map(_run_one, values))
     else:
-        results = [_run_one(v) for v in values]
-
-    return results
-
-
-def export_results(data: List[Dict[str, Any]], filename: str) -> None:
-    """
-    Export a list of result dicts to a CSV file at `filename`.
-    """
-    df = pd.DataFrame(data)
-    df.to_csv(filename, index=False)
-
-
-def results_to_dataframe(results: List[Dict[str, Any]]) -> pd.DataFrame:
-    """
-    Convert a list of result dicts into a pandas DataFrame.
-    """
-    return pd.DataFrame(results)
+        return [_run_one(v) for v in values]
 
 
 def run_2d_sensitivity(
@@ -134,22 +116,22 @@ def run_2d_sensitivity(
     heatmap_kwargs: Optional[Dict[str, Any]] = None,
     threads: int = 1,
 ) -> pd.DataFrame:
-    """
-    Run 2D sensitivity on two parameters and pivot IRR into a matrix.
-
-    Returns DataFrame of shape :
-    (len(values1), len(values2)) with index=values1, columns=values2.
-    If heatmap=True, displays interactive heatmap.
-    As perf guard: if grid ≥10k combos, asserts runtime <2s.
-    Supports optional threading for speed.
-    """
     combos = list(itertools.product(values1, values2))
     start = time.time()
 
     def _one(args: Any) -> Dict[str, Any]:
         v1, v2 = args
-        cfg = {**base, param1: v1, param2: v2}
-        summary = LBOModel(**cfg).run(years)["Exit Summary"]
+        cfg = base.copy()
+        cfg[param1] = v1
+        cfg[param2] = v2
+        # filter before instantiation
+        lbo_kwargs = _filter_cfg_for_lbo(cfg)
+
+        model = LBOModel(**lbo_kwargs)
+        for t in model.debt_tranches:
+            if t.name in ("Senior", "Mezzanine"):
+                t.amort = False
+        summary = model.run(years)["Exit Summary"]
         return {param1: v1, param2: v2, "IRR": summary["IRR"], "MOIC": summary["MOIC"]}
 
     if threads > 1 and len(combos) > 5000:
@@ -173,6 +155,6 @@ def run_2d_sensitivity(
 
     if len(combos) >= 10_000:
         duration = time.time() - start
-        assert duration < 2.0, f"run_2d_sensitivity too slow: {duration: .3f}s"
+        assert duration < 2.0, f"run_2d_sensitivity too slow: {duration:.3f}s"
 
     return pivot

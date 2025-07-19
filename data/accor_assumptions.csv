@@ -1,0 +1,13 @@
+Driver,Stress Case,Base Case,Upside Case
+Revenue CAGR (2024–29),4.0%,5.0%,6.0%
+EBITDA Margin,19.5%,21.0%,22.5%
+CapEx / Revenue,4.5%,4.0%,3.5%
+ΔWC / Revenue,1.25%,1.0%,0.75%
+Tax Rate,26.0%,25.0%,24.0%
+Entry EV / EBITDA Multiple,8.0×,8.5×,9.0×
+Exit EV / EBITDA Multiple,7.5×,9.0×,10.0×
+Total Debt / EV,50%,60%,65%
+Cost of Debt (Senior/Mezz),5.0% / 7.0%,4.0% / 6.0%,3.0% / 5.0%
+Revolver Availability / Sweep,50% / 75%,75% / 75%,75% / 95%
+WACC,8.0%,7.0%,6.0%
+Terminal Growth (Gordon),1.0%,2.0%,2.5%
