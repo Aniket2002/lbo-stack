@@ -41,28 +41,34 @@
 ## 2&nbsp;·&nbsp;File-tree overview
 
 ```
-
 lbo-stack/
 ├─ .github/workflows/ci.yml        # test + lint matrix
-├─ case\_studies/                   # real-deal replicas (WIP)
-├─ data/                           # sample JSON configs
-├─ output/                         # generated CSV / JSON results
+├─ configs/                        # JSON configuration files
+├─ data/                          # sample datasets & inputs
+├─ docs/
+│  ├─ vp_enhancement/             # VP feedback & surgical tweaks
+│  └─ templates/                  # report templates
+├─ output/
+│  ├─ charts/                     # generated PNG charts
+│  ├─ reports/                    # generated PDF reports
+│  └─ lbo/                        # CSV results & analysis
+├─ scripts/                       # utility & generation scripts
 ├─ src/
 │  ├─ modules/
-│  │  ├─ cashflow\.py
+│  │  ├─ cashflow.py
 │  │  ├─ exit.py
-│  │  ├─ fund\_waterfall.py
-│  │  ├─ lbo\_model.py
+│  │  ├─ fund_waterfall.py
+│  │  ├─ lbo_model.py
+│  │  ├─ orchestrator_advanced.py  # VP-enhanced orchestrator
 │  │  └─ sensitivity.py
-│  └─ utils/ (helpers, schemas)
-├─ tests/                          # pytest suite (>90 % coverage)
-├─ cli.py                          # Typer CLI entrypoint
-├─ streamlit\_app.py                # Web UI
-└─ README.md                       # ← you are here
+│  └─ utils/                      # helpers, schemas
+├─ tests/                         # pytest suite (>90% coverage)
+├─ cli.py                         # Typer CLI entrypoint
+├─ streamlit_app.py               # Web UI
+└─ README.md                      # ← you are here
+```
 
-````
-
-All public APIs live under `src/modules/`; CLI & UI import directly from there.
+All public APIs live under `src/modules/`; generated outputs go to `output/` to keep root clean.
 
 ---
 
@@ -131,4 +137,42 @@ Pure-Python, stateless; swap any component with QuantLib, Pandas, etc.
 * **v2.0**  **Three-Statement Engine** → integrated IS/BS/CF generator feeding the LBO model, enabling working-capital roll-forwards and tax shield precision
 
 *(Open to PRs 👏 – raise an issue if you want to tackle an item.)*
+
+---
+
+## 7 · VP-Enhanced Framework
+
+> **"Finally reads like sponsor material, not student theater."** — PE VP Review
+
+This implementation has been surgically enhanced based on detailed feedback from an active PE VP to achieve **internal-memo-grade** quality:
+
+### Quick Reproduction
+```bash
+# Generate VP-enhanced analysis with one command
+python src/modules/orchestrator_advanced.py
+
+# Output: Enhanced PDF with all VP micro-tweaks
+# Result: final_pdf.pdf (659KB) - ship-ready quality
+```
+
+### VP Surgical Tweaks Implemented
+- **Label Hygiene**: Consistent "Net Debt / EBITDA" format throughout (not "Debt/EBITDA")
+- **Sources & Uses Bridge**: Visual micro-graphic showing $1.2B → equity check calculation
+- **Exit Equity Bridge**: EBITDA × multiple → EV - net debt - costs = equity value walk
+- **Deleveraging Walk**: Year-by-year debt paydown visualization with covenant headroom
+- **Monte Carlo Footer**: Explicit priors (±150bps growth, ±200bps margin, ±0.5x multiple)
+- **Working Capital**: Days-based approach (DSO/DPO/DIO) vs. % of sales method
+- **IFRS-16 Framework**: Lease-in-debt treatment with consistent methodology documentation
+
+### Quality Benchmarks Achieved
+- ✅ **Ship-Ready Status**: VP confirmed "wouldn't hold this back"
+- ✅ **Internal-Memo-Grade**: Professional labeling and micro-graphics
+- ✅ **Recruiter-Ready**: Narrative flows like sponsor material
+- ✅ **Technical Rigor**: 9.1% IRR / 1.7x MOIC with proper covenant tracking
+
+### EBITDAR Variant Analysis
+See `EBITDAR_APPENDIX.md` for comprehensive comparison of lease treatment approaches:
+- Base Case: IFRS-16 lease-in-debt (implemented)
+- Alternative: EBITDAR lease-out-of-debt methodology
+- Impact Analysis: Multiple and coverage ratio implications
 

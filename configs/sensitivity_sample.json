@@ -1,0 +1,21 @@
+{
+  "base": {
+    "enterprise_value": 100.0,
+    "debt_pct": 0.6,
+    "revenue": 50.0,
+    "rev_growth": 0.1,
+    "ebitda_margin": 0.2,
+    "capex_pct": 0.05,
+    "wc_pct": 0.1,
+    "tax_rate": 0.25,
+    "exit_multiple": 8.0,
+    "interest_rate": 0.07
+  },
+  "param": "exit_multiple",
+  "values": [
+    6.0,
+    8.0,
+    10.0
+  ],
+  "years": 5
+}

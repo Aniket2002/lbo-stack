@@ -48,6 +48,19 @@ nosetests.xml
 coverage.xml
 *.cover
 *.py,cover
+
+# Generated output files (keep root clean)
+/*.pdf
+/*.png
+/*.jpg
+/*.jpeg
+/*.svg
+final_pdf.pdf
+accor_lbo_*.pdf
+
+# Temporary files
+temp_*.py
+debug_*.py
 .hypothesis/
 .pytest_cache/
 cover/

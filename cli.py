@@ -9,11 +9,7 @@ from pydantic import BaseModel, Field, ValidationError
 
 from src.modules.fund_waterfall import compute_waterfall_by_year, summarize_waterfall
 from src.modules.lbo_model import LBOModel
-from src.modules.sensitivity import (
-    results_to_dataframe,
-    run_2d_sensitivity,
-    run_sensitivity,
-)
+from src.modules.sensitivity import run_2d_sensitivity
 
 app = typer.Typer(add_completion=False)
 logger = logging.getLogger(__name__)
@@ -386,16 +382,10 @@ def sensitivity(
             raise typer.Exit(2)
         typer.secho(f"✅ 2D sensitivity saved to {out}", fg=typer.colors.GREEN)
     else:
-        results = run_sensitivity(base, p1, v1, **extras, years=years)
-        df1 = results_to_dataframe(results)
-        out = output_dir / "sensitivity_1d.csv"
-        logger.info("Writing 1D sensitivity to %s", out)
-        try:
-            df1.to_csv(out, index=False)
-        except OSError as e:
-            typer.secho(f"❌ Failed to write 1D CSV: {e}", fg=typer.colors.RED)
-            raise typer.Exit(2)
-        typer.secho(f"✅ 1D sensitivity saved to {out}", fg=typer.colors.GREEN)
+        typer.secho(
+            "❌ 1D sensitivity not supported in this version", fg=typer.colors.RED
+        )
+        raise typer.Exit(1)
 
 
 if __name__ == "__main__":

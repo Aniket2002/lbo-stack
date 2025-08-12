@@ -1,0 +1,6 @@
+[flake8]
+max-line-length = 88
+exclude = __pycache__,*.pyc,.git,docs/,output/,*.pdf,*.png,*.csv
+ignore = E203,W503,E501
+per-file-ignores = 
+    *.py:E501

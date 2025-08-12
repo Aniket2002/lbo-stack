@@ -1,4 +1,5 @@
-# orchestrator_v3.py – Sponsor-Style 5-Year LBO with Accor Data (positive IRR logic)
+# orchestrator_v3.py – Sponsor-Style 5-Year LBO with Accor Data
+# (positive IRR logic)
 
 import matplotlib.pyplot as plt
 import numpy_financial as npf
@@ -34,7 +35,8 @@ def load_inputs():
         "rev_start": start_rev,
         "rev_growth": rev_growth,
         "ebitda_margin_start": ebitda_margin,
-        "ebitda_margin_end": ebitda_margin + 0.12,  # ↑ operational margin expansion
+        # ↑ operational margin expansion
+        "ebitda_margin_end": ebitda_margin + 0.12,
         "capex_pct": capex_pct * 0.75,  # ↓ CapEx optimized
         "wc_pct": wc_pct * 0.6,  # ↓ leaner WC
         "tax_rate": tax_rate,
@@ -158,9 +160,8 @@ def generate_pdf(df, irr):
     pdf.set_font("Arial", size=8)
     for _, row in df.iterrows():
         for val in row:
-            pdf.cell(
-                40, 8, f"{val:.2f}" if isinstance(val, float) else str(val), border=1
-            )
+            val_str = f"{val:.2f}" if isinstance(val, float) else str(val)
+            pdf.cell(40, 8, val_str, border=1)
         pdf.ln()
 
     pdf.add_page()

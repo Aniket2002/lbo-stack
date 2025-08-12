@@ -166,11 +166,15 @@ class LBOModel:
                 icr = ebitda / total_interest
                 if icr < self.icr_hurdle:
                     raise CovenantBreachError(f"Year {year}: ICR breach")
-            if self.ltv_hurdle is not None:
-                current_ev = ebitda * self.exit_multiple
+            # FIX: LTV should be Net Debt / EBITDA ratio, not debt > EV
+            if self.ltv_hurdle is not None and ebitda > 0:
                 total_debt = sum(t.debt for t in self.debt_tranches)
-                if total_debt > current_ev:
-                    raise CovenantBreachError(f"Year {year}: LTV breach")
+                ltv_ratio = total_debt / ebitda
+                if ltv_ratio > self.ltv_hurdle:
+                    raise CovenantBreachError(
+                        f"Year {year}: LTV breach ({ltv_ratio:.1f}x > "
+                        f"{self.ltv_hurdle:.1f}x)"
+                    )
 
             ebt = ebitda - total_interest
             tax = ebt * self.tax_rate
@@ -219,7 +223,10 @@ class LBOModel:
 
             total_debt = sum(t.debt for t in self.debt_tranches)
             print(
-                f"[DEBUG] Year {year} | EBITDA: {ebitda:.2f} | Interest: {total_interest:.2f} | Equity CF: {remaining_cash:.2f} | Total Debt: {total_debt:.2f}"
+                f"[DEBUG] Year {year} | EBITDA: {ebitda:.2f} | "
+                f"Interest: {total_interest:.2f} | "
+                f"Equity CF: {remaining_cash:.2f} | "
+                f"Total Debt: {total_debt:.2f}"
             )
             results[f"Year {year}"] = {
                 "Revenue": revenue,
@@ -243,9 +250,30 @@ class LBOModel:
         )
         nd = sum(t.debt for t in self.debt_tranches)
         eqv = tv - nd
+
+        # FIX: Add exit equity value to IRR cashflow vector
+        irr_cf.append(eqv)
+
+        # FIX: Calculate IRR from complete equity cashflow vector
         irr = npf.irr(irr_cf)
         irr = float(irr) if irr is not None and not math.isnan(irr) else None
-        moic = eqv / self.equity if self.equity > 0 else None
+
+        # FIX: MOIC includes all equity returns (interim + exit)
+        total_equity_inflows = sum(max(0, cf) for cf in irr_cf[1:])
+        moic = total_equity_inflows / self.equity if self.equity > 0 else None
+
+        # Add invariant checks for debugging
+        assert irr_cf[0] < 0, f"Initial equity must be negative: {irr_cf[0]}"
+        if irr is not None and not math.isnan(irr):
+            expected_positive_irr = sum(irr_cf[1:]) > -irr_cf[0]
+            if expected_positive_irr and irr < 0:
+                print(
+                    f"[WARNING] IRR/MOIC mismatch: IRR={irr:.2%}, " f"MOIC={moic:.2f}x"
+                )
+            if not expected_positive_irr and irr > 0:
+                print(
+                    f"[WARNING] IRR/MOIC mismatch: IRR={irr:.2%}, " f"MOIC={moic:.2f}x"
+                )
 
         results["Exit Summary"] = {
             "Exit Year": exit_year,
