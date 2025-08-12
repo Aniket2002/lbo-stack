@@ -1,22 +1,10 @@
-<h1 align="center">
-  LBO-Stack 🦄
-</h1>
+<h1 align="center">LBO‑Stack 🦄</h1>
+
+<p align="center"><em>PE‑grade LBO modeling · transparent assumptions · recruiter‑ready outputs</em></p>
 
 <p align="center">
-  <em>Deal-grade analytics  |  Partner-grade transparency  |  Push-button storytelling</em>
-</p>
-
-<p align="center">
-  <!-- CI & coverage badges retained -->
-  <a href="https://github.com/Aniket2002/lbo-stack/actions/workflows/ci.yml">
-    <img alt="CI Status" src="https://img.shields.io/github/actions/workflow/status/Aniket2002/lbo-stack/ci.yml?label=CI&logo=github">
-  </a>
-  <a href="https://codecov.io/gh/Aniket2002/lbo-stack">
-    <img alt="Coverage" src="https://img.shields.io/codecov/c/github/Aniket2002/lbo-stack?logo=codecov">
-  </a>
-  <!-- ▶️ Live demo badge updated -->
-  <a href="https://aniket2002-lbosim.streamlit.app/">
-    <img alt="Live Demo" src="https://img.shields.io/badge/Demo-Live-%2300c853?logo=streamlit&logoColor=white">
+  <a href="#quick-start">
+    <img alt="Run in 60 seconds" src="https://img.shields.io/badge/Run_in-60s-2e7d32?logo=python&logoColor=white">
   </a>
   <a href="#license">
     <img alt="License" src="https://img.shields.io/github/license/Aniket2002/lbo-stack">
@@ -25,88 +13,86 @@
 
 ---
 
-## 1&nbsp;·&nbsp;What is **lbo-stack**?
+## 1 · What is lbo‑stack?
 
-> **“Excel models break; black-box SaaS hides assumptions.”**  
-> `lbo-stack` is an **open, inspectable, and extensible** toolkit that models  
-> deal-level cash flows *and* fund-level waterfalls, complete with tests, CI, and a polished UI.
+> Open, inspectable LBO analytics that read like sponsor material, not student theater.
 
-* **Investor-grade accuracy** – cash-sweep hierarchy, LTV & ICR covenants, 100 % GP catch-up, claw-back with interest.  
-* **Quant-speed iteration** – vectorised sensitivity grids & bootstrap CIs run orders of magnitude faster than Excel.  
-* **Push-button storytelling** – Streamlit front-end exports an investment memo PDF in one click.  
-* **Production hygiene** – > 90 % test coverage, GitHub Actions matrix, pre-commit, type hints.
+- Investor‑grade mechanics: cash sweep, Net Debt/EBITDA and ICR covenant tracking, IFRS‑16 lease handling, sources & uses, exit bridge
+- Sensitivity and Monte Carlo to explore IRR/MOIC distributions
+- One‑command PDF output with narrative, charts, and headroom tables
+- Simple Python scripts; no web app or CI required to run
 
 ---
 
-## 2&nbsp;·&nbsp;File-tree overview
+## 2 · File tree (what you actually need)
 
 ```
 lbo-stack/
-├─ .github/workflows/ci.yml        # test + lint matrix
-├─ configs/                        # JSON configuration files
-├─ data/                          # sample datasets & inputs
-├─ docs/
-│  ├─ vp_enhancement/             # VP feedback & surgical tweaks
-│  └─ templates/                  # report templates
-├─ output/
-│  ├─ charts/                     # generated PNG charts
-│  ├─ reports/                    # generated PDF reports
-│  └─ lbo/                        # CSV results & analysis
-├─ scripts/                       # utility & generation scripts
+├─ configs/                 # sample configs
+├─ data/                    # input datasets (CSV/JSON)
+├─ docs/                    # report templates and docs
+├─ output/                  # generated charts/CSVs/PDFs
+├─ scripts/
+│  ├─ final_validation.py   # quick professional run
+│  └─ generate_final_analysis.py  # full report generation
 ├─ src/
-│  ├─ modules/
-│  │  ├─ cashflow.py
-│  │  ├─ exit.py
-│  │  ├─ fund_waterfall.py
-│  │  ├─ lbo_model.py
-│  │  ├─ orchestrator_advanced.py  # VP-enhanced orchestrator
-│  │  └─ sensitivity.py
-│  └─ utils/                      # helpers, schemas
-├─ tests/                         # pytest suite (>90% coverage)
-├─ cli.py                         # Typer CLI entrypoint
-├─ streamlit_app.py               # Web UI
-└─ README.md                      # ← you are here
+│  └─ modules/
+│     ├─ cashflow.py
+│     ├─ exit.py
+│     ├─ fund_waterfall.py
+│     ├─ lbo_model.py
+│     ├─ orchestrator_advanced.py
+│     └─ sensitivity.py
+├─ tests/                   # core unit tests
+├─ test_enhanced.py         # 60‑second demo entrypoint
+├─ lbo_cli.py               # optional CLI
+└─ README.md
 ```
 
-All public APIs live under `src/modules/`; generated outputs go to `output/` to keep root clean.
+APIs live under `src/modules/`. All outputs land in `output/`.
 
 ---
 
-## 3&nbsp;·&nbsp;60-second product tour
+## 3 · Why this stands out to recruiters
 
-| Screenshot | What you see |
-|------------|--------------|
-| <img src="docs/img/sim.png" width="320"> | **Simulator tab** – tweak leverage, tiers ➜ instant IRR & MOIC |
-| <img src="docs/img/compare.png" width="320"> | **Scenario Compare** – benchmark 3 presets side-by-side |
-| <img src="docs/img/memo.png" width="320"> | **Memo export** – PDF with narrative, tables & charts |
-
-Live demo 👉 **<https://aniket2002-lbosim.streamlit.app/>**
+- Business impact first: clean sources & uses, leverage headroom, and exit bridge your audience expects
+- Engineering discipline: modular core (`src/modules`), tests, and deterministic outputs
+- Storytelling built‑in: one command → PDF with narrative + charts
+- Clear, runnable examples: no environment yak‑shaving
 
 ---
 
-## 4&nbsp;·&nbsp;Quick-Start
+## 4 · Quick‑Start
 
-```bash
-# 1 / Clone and install (editable)
+```powershell
+# 1) Clone
 git clone https://github.com/Aniket2002/lbo-stack.git
 cd lbo-stack
-pip install -e .[ui,dev]
 
-# 2 / Generate sample configs
-python cli.py init-sample ./data
+# 1b) Install minimal deps (first run only)
+pip install -r requirements.txt
 
-# 3 / Run an LBO (7-year horizon)
-python cli.py run ./data/sample_lbo.json --years 7 -o ./output -v
+# 2) Run a 60‑second demo (creates outputs in ./output)
+python .\test_enhanced.py
 
-# 4 / Launch the Streamlit app
-streamlit run streamlit_app.py
-````
+# 3) Generate a polished analysis/PDF
+python .\scripts\final_validation.py
+# or the full report pipeline
+python .\scripts\generate_final_analysis.py
+```
 
-`--dry-run` validates configs without executing – perfect for CI pipelines.
+Tip: If your Python complains about missing packages, install them and re‑run:
+
+```powershell
+python -m pip install -U pip
+# then install what your interpreter asks for (e.g., pandas, numpy, matplotlib)
+```
+
+Sample outputs are written under `output/` (charts, CSVs, and PDFs if the data is present).
 
 ---
 
-## 5 · Architecture
+## 5 · Architecture
 
 ```mermaid
 flowchart LR
@@ -124,11 +110,11 @@ flowchart LR
   Engine --> UI
 ```
 
-Pure-Python, stateless; swap any component with QuantLib, Pandas, etc.
+Pure‑Python modules; swap components as needed.
 
 ---
 
-## 6 · Road-map
+## 6 · Road‑map
 
 * **v1.1**  Day-weighted simple-pref accrual
 * **v1.2**  Rate-grid pricing for TLB + mezz toggle
@@ -140,19 +126,20 @@ Pure-Python, stateless; swap any component with QuantLib, Pandas, etc.
 
 ---
 
-## 7 · VP-Enhanced Framework
+## 7 · VP‑Enhanced framework
 
 > **"Finally reads like sponsor material, not student theater."** — PE VP Review
 
 This implementation has been surgically enhanced based on detailed feedback from an active PE VP to achieve **internal-memo-grade** quality:
 
-### Quick Reproduction
-```bash
-# Generate VP-enhanced analysis with one command
-python src/modules/orchestrator_advanced.py
+### Quick reproduction
+```powershell
+# Generate VP‑enhanced analysis
+python .\scripts\generate_final_analysis.py
 
-# Output: Enhanced PDF with all VP micro-tweaks
-# Result: final_pdf.pdf (659KB) - ship-ready quality
+# Outputs (examples)
+# output\reports\accor_lbo_enhanced.pdf
+# output\lbo\lbo_results.json
 ```
 
 ### VP Surgical Tweaks Implemented
@@ -170,9 +157,15 @@ python src/modules/orchestrator_advanced.py
 - ✅ **Recruiter-Ready**: Narrative flows like sponsor material
 - ✅ **Technical Rigor**: 9.1% IRR / 1.7x MOIC with proper covenant tracking
 
-### EBITDAR Variant Analysis
-See `EBITDAR_APPENDIX.md` for comprehensive comparison of lease treatment approaches:
-- Base Case: IFRS-16 lease-in-debt (implemented)
-- Alternative: EBITDAR lease-out-of-debt methodology
-- Impact Analysis: Multiple and coverage ratio implications
+### Customize in code (2 lines)
+```python
+from src.modules.orchestrator_advanced import read_accor_assumptions, run_enhanced_base_case
+a = read_accor_assumptions(); a.exit_ev_ebitda = 10.5
+_, metrics = run_enhanced_base_case(a)
+print(f"IRR: {metrics['IRR']:.1%} | MOIC: {metrics['MOIC']:.2f}x")
+```
+
+---
+
+If you’re skimming this as a recruiter: this repo shows finance fluency, engineering hygiene, and the ability to ship polished artifacts quickly.
 
