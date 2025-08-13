@@ -59,112 +59,181 @@ st.markdown("---")
 st.sidebar.header("📊 Deal Assumptions")
 st.sidebar.markdown("*Lease-adjusted metrics*")
 
-# Entry/Exit Multiples
-st.sidebar.subheader("Valuation")
-entry_multiple = st.sidebar.number_input(
-    "Entry EV/EBITDA (×)", 
-    min_value=5.0, max_value=15.0, value=8.5, step=0.1,
-    help="Enterprise Value to EBITDA multiple at entry"
-)
-exit_multiple = st.sidebar.number_input(
-    "Exit EV/EBITDA (×)", 
-    min_value=6.0, max_value=15.0, value=10.0, step=0.1,
-    help="Enterprise Value to EBITDA multiple at exit"
-)
+# Create a form so nothing runs until user clicks
+with st.sidebar.form("assumptions_form"):
+    # Entry/Exit Multiples
+    st.subheader("Valuation")
+    entry_multiple = st.number_input(
+        "Entry EV/EBITDA (×)", 
+        min_value=5.0, max_value=15.0, value=8.5, step=0.1,
+        help="Enterprise Value to EBITDA multiple at entry"
+    )
+    exit_multiple = st.number_input(
+        "Exit EV/EBITDA (×)", 
+        min_value=6.0, max_value=15.0, value=10.0, step=0.1,
+        help="Enterprise Value to EBITDA multiple at exit"
+    )
 
-# Capital Structure
-st.sidebar.subheader("Capital Structure")
-debt_pct = st.sidebar.slider(
-    "Net Debt % of EV", 
-    min_value=0.40, max_value=0.75, value=0.60, step=0.01,
-    help="Net debt as percentage of enterprise value (lease-adjusted)"
-)
-cash_sweep = st.sidebar.slider(
-    "Cash Sweep %", 
-    min_value=0.50, max_value=0.95, value=0.85, step=0.05,
-    help="Percentage of excess cash used for debt paydown"
-)
-min_cash = st.sidebar.number_input(
-    "Minimum Cash (€M)", 
-    min_value=0.0, max_value=500.0, value=150.0, step=10.0,
-    help="Minimum cash balance to maintain"
-)
+    # Capital Structure
+    st.subheader("Capital Structure")
+    debt_pct = st.slider(
+        "Net Debt % of EV", 
+        min_value=0.40, max_value=0.75, value=0.60, step=0.01,
+        help="Net debt as percentage of enterprise value (lease-adjusted)"
+    )
+    cash_sweep = st.slider(
+        "Cash Sweep %", 
+        min_value=0.50, max_value=0.95, value=0.85, step=0.05,
+        help="Percentage of excess cash used for debt paydown"
+    )
+    min_cash = st.number_input(
+        "Minimum Cash (€M)", 
+        min_value=0.0, max_value=500.0, value=150.0, step=10.0,
+        help="Minimum cash balance to maintain"
+    )
 
-# Lease Treatment
-st.sidebar.subheader("IFRS-16 Leases")
-lease_multiple = st.sidebar.number_input(
-    "Lease Liability (× EBITDA)", 
-    min_value=0.0, max_value=6.0, value=3.2, step=0.1,
-    help="Lease liability as multiple of EBITDA"
-)
+    # Lease Treatment
+    st.subheader("IFRS-16 Leases")
+    lease_multiple = st.number_input(
+        "Lease Liability (× EBITDA)", 
+        min_value=0.0, max_value=6.0, value=3.2, step=0.1,
+        help="Lease liability as multiple of EBITDA"
+    )
 
-# Covenants
-st.sidebar.subheader("Debt Covenants")
-icr_covenant = st.sidebar.number_input(
-    "ICR Minimum (×)", 
-    min_value=1.0, max_value=4.0, value=1.8, step=0.1,
-    help="Interest Coverage Ratio minimum threshold"
-)
-leverage_covenant = st.sidebar.number_input(
-    "Net Debt/EBITDA Maximum (×)", 
-    min_value=5.0, max_value=12.0, value=9.0, step=0.1,
-    help="Net Debt to EBITDA maximum threshold"
-)
+    # Covenants
+    st.subheader("Debt Covenants")
+    icr_covenant = st.number_input(
+        "ICR Minimum (×)", 
+        min_value=1.0, max_value=4.0, value=1.8, step=0.1,
+        help="Interest Coverage Ratio minimum threshold"
+    )
+    leverage_covenant = st.number_input(
+        "Net Debt/EBITDA Maximum (×)", 
+        min_value=5.0, max_value=12.0, value=9.0, step=0.1,
+        help="Net Debt to EBITDA maximum threshold"
+    )
 
-# Working Capital
-st.sidebar.subheader("Working Capital (Days)")
-days_receivables = st.sidebar.number_input(
-    "Accounts Receivable", 
-    min_value=0, max_value=60, value=15, step=1,
-    help="Days sales outstanding"
-)
-days_payables = st.sidebar.number_input(
-    "Accounts Payable", 
-    min_value=0, max_value=90, value=30, step=1,
-    help="Days payable outstanding"
-)
-days_deferred = st.sidebar.number_input(
-    "Deferred Revenue", 
-    min_value=0, max_value=90, value=20, step=1,
-    help="Days of deferred revenue"
-)
+    # Working Capital
+    st.subheader("Working Capital (Days)")
+    days_receivables = st.number_input(
+        "Accounts Receivable", 
+        min_value=0, max_value=60, value=15, step=1,
+        help="Days sales outstanding"
+    )
+    days_payables = st.number_input(
+        "Accounts Payable", 
+        min_value=0, max_value=90, value=30, step=1,
+        help="Days payable outstanding"
+    )
+    days_deferred = st.number_input(
+        "Deferred Revenue", 
+        min_value=0, max_value=90, value=20, step=1,
+        help="Days of deferred revenue"
+    )
+    
+    # Advanced Controls
+    with st.expander("Advanced: Debt Structure & Rates"):
+        senior_frac = st.slider("Senior fraction", 0.0, 1.0, 0.70, 0.05)
+        mezz_frac = st.slider("Mezz fraction", 0.0, 1.0, 0.20, 0.05)
+        senior_rate = st.number_input("Senior rate", 0.00, 0.20, 0.045, 0.005, format="%.3f")
+        mezz_rate = st.number_input("Mezz rate", 0.00, 0.20, 0.080, 0.005, format="%.3f")
 
-# Monte Carlo Controls
-st.sidebar.subheader("🎲 Monte Carlo")
-mc_scenarios = st.sidebar.select_slider(
-    "Scenarios", 
-    options=[0, 100, 200, 400], 
-    value=200,
-    help="Number of Monte Carlo simulations (0 = skip)"
-)
-rng_seed = st.sidebar.number_input(
-    "RNG Seed", 
-    min_value=0, max_value=10000, value=42, step=1,
-    help="Random seed for reproducibility"
+    # Monte Carlo Controls
+    st.subheader("🎲 Monte Carlo")
+    mc_scenarios = st.select_slider(
+        "Scenarios", 
+        options=[0, 100, 200, 400], 
+        value=200,
+        help="Number of Monte Carlo simulations (0 = skip)"
+    )
+    rng_seed = st.number_input(
+        "RNG Seed", 
+        min_value=0, max_value=10000, value=42, step=1,
+        help="Random seed for reproducibility"
+    )
+    
+    # Monte Carlo Priors
+    with st.expander("Monte Carlo Priors"):
+        sigma_growth = st.slider("σ(growth)", 0.0, 0.05, 0.015, 0.005, format="%.3f")
+        sigma_margin = st.slider("σ(margin)", 0.0, 0.05, 0.020, 0.005, format="%.3f")
+        sigma_multiple = st.slider("σ(multiple)", 0.0, 1.5, 0.50, 0.05)
+    
+    # Submit button
+    submitted = st.form_submit_button("🚀 Run Analysis", type="primary")
+
+# Stop if user hasn't submitted
+if not submitted:
+    st.info("👈 **Set your assumptions and click 'Run Analysis' to start**")
+    st.stop()
+
+# Build parameters dict for caching
+params = dict(
+    entry_ev_ebitda=entry_multiple,
+    exit_ev_ebitda=exit_multiple,
+    debt_pct_of_ev=debt_pct,
+    cash_sweep_pct=cash_sweep,
+    min_cash=min_cash,
+    lease_liability_mult_of_ebitda=lease_multiple,
+    icr_hurdle=icr_covenant,
+    leverage_hurdle=leverage_covenant,
+    days_receivables=days_receivables,
+    days_payables=days_payables,
+    days_deferred_revenue=days_deferred,
+    senior_frac=senior_frac,
+    mezz_frac=mezz_frac,
+    senior_rate=senior_rate,
+    mezz_rate=mezz_rate,
+    # Add required default parameters
+    years=5,
+    ifrs16_method="lease_in_debt",
+    lease_amort_years=10
 )
 
 # --- Create DealAssumptions Object ---
-def create_deal_assumptions():
+def create_deal_assumptions_safe(
+    entry_ev_ebitda, exit_ev_ebitda, debt_pct_of_ev, cash_sweep_pct, min_cash,
+    lease_liability_mult_of_ebitda, icr_hurdle, leverage_hurdle, 
+    days_receivables, days_payables, days_deferred_revenue,
+    senior_frac, mezz_frac, senior_rate, mezz_rate
+):
+    """Create DealAssumptions with explicit type conversion"""
     return DealAssumptions(
-        entry_ev_ebitda=entry_multiple,
-        exit_ev_ebitda=exit_multiple,
-        debt_pct_of_ev=debt_pct,
-        cash_sweep_pct=cash_sweep,
-        min_cash=min_cash,
-        lease_liability_mult_of_ebitda=lease_multiple,
-        icr_hurdle=icr_covenant,
-        leverage_hurdle=leverage_covenant,
-        days_receivables=days_receivables,
-        days_payables=days_payables,
-        days_deferred_revenue=days_deferred
+        entry_ev_ebitda=float(entry_ev_ebitda),
+        exit_ev_ebitda=float(exit_ev_ebitda),
+        debt_pct_of_ev=float(debt_pct_of_ev),
+        cash_sweep_pct=float(cash_sweep_pct),
+        min_cash=float(min_cash),
+        lease_liability_mult_of_ebitda=float(lease_liability_mult_of_ebitda),
+        icr_hurdle=float(icr_hurdle),
+        leverage_hurdle=float(leverage_hurdle),
+        days_receivables=float(days_receivables),
+        days_payables=float(days_payables),
+        days_deferred_revenue=float(days_deferred_revenue),
+        senior_frac=float(senior_frac),
+        mezz_frac=float(mezz_frac),
+        senior_rate=float(senior_rate),
+        mezz_rate=float(mezz_rate),
+        years=5,
+        ifrs16_method="lease_in_debt",
+        lease_amort_years=10
     )
 
 # --- Run Base Case Analysis ---
 @st.cache_data
-def run_base_case():
-    """Run base case analysis with caching"""
+def run_base_case(
+    entry_ev_ebitda, exit_ev_ebitda, debt_pct_of_ev, cash_sweep_pct, min_cash,
+    lease_liability_mult_of_ebitda, icr_hurdle, leverage_hurdle, 
+    days_receivables, days_payables, days_deferred_revenue,
+    senior_frac, mezz_frac, senior_rate, mezz_rate
+):
+    """Run base case analysis with parameterized caching"""
     try:
-        a = create_deal_assumptions()
+        a = create_deal_assumptions_safe(
+            entry_ev_ebitda, exit_ev_ebitda, debt_pct_of_ev, cash_sweep_pct, min_cash,
+            lease_liability_mult_of_ebitda, icr_hurdle, leverage_hurdle, 
+            days_receivables, days_payables, days_deferred_revenue,
+            senior_frac, mezz_frac, senior_rate, mezz_rate
+        )
         results = run_comprehensive_lbo_analysis(a)
         return results, a
     except Exception as e:
@@ -172,55 +241,40 @@ def run_base_case():
         return None, None
 
 with st.spinner("🔄 Running base case analysis..."):
-    base_results, deal_assumptions = run_base_case()
+    base_results, deal_assumptions = run_base_case(
+        entry_multiple, exit_multiple, debt_pct, cash_sweep, min_cash,
+        lease_multiple, icr_covenant, leverage_covenant,
+        days_receivables, days_payables, days_deferred,
+        senior_frac, mezz_frac, senior_rate, mezz_rate
+    )
 
 if base_results is None or deal_assumptions is None:
     st.error("Failed to run analysis. Please check your assumptions.")
     st.stop()
 
-# Extract key metrics - handle the complex structure returned by run_comprehensive_lbo_analysis
-raw_metrics = base_results.get('metrics', {})
+# Extract metrics - fail loudly if missing critical data
+metrics = base_results.get('metrics', {})
 projections = base_results.get('financial_projections', {})
 
-# Get key financial metrics with proper handling
-irr = raw_metrics.get('IRR', 0.0)
-moic = raw_metrics.get('MOIC', 0.0) 
-min_icr = raw_metrics.get('Min_ICR', float('inf'))
-max_leverage = raw_metrics.get('Max_LTV', 0.0)  # Note: this is actually Net Debt/EBITDA
-exit_proceeds = raw_metrics.get('Equity Value', 0.0)
+# Check for required metrics
+required = ["ICR_Series", "LTV_Series", "FCF_Coverage_Series", "Min_ICR", "Max_LTV", "IRR", "MOIC", "Equity Value"]
+missing = [k for k in required if k not in metrics or metrics[k] is None]
 
-# Create safe metrics dict for plotting functions that expect ICR_Series etc.
-safe_metrics = {
-    'ICR_Series': raw_metrics.get('ICR_Series', [2.5, 2.8, 3.1, 3.5, 4.0]),
-    'LTV_Series': raw_metrics.get('LTV_Series', [8.4, 7.6, 6.8, 5.9, 5.1]),
-    'FCF_Coverage_Series': raw_metrics.get('FCF_Coverage_Series', [1.2, 1.3, 1.4, 1.5, 1.6]),
-    'Min_ICR': min_icr,
-    'Max_LTV': max_leverage,
-    'Min_FCF_Coverage': raw_metrics.get('Min_FCF_Coverage', 1.2),
-    'IRR': irr,
-    'MOIC': moic,
-    'Equity Value': exit_proceeds
-}
+if missing:
+    st.error(f"❌ **Model did not return required metrics:** {', '.join(missing)}")
+    st.error("Check orchestrator_advanced.py - the model may need debugging.")
+    st.info("💡 This usually means the LBO analysis failed or returned incomplete data.")
+    st.stop()
 
-# Debug: Check if we have the required series data
-if 'ICR_Series' not in raw_metrics or not raw_metrics['ICR_Series']:
-    st.info("📊 Note: Using sample covenant data for visualization. Run the full model to see actual covenant tracking.")
-    # Populate with realistic sample data based on current assumptions
-    sample_years = 5
-    safe_metrics['ICR_Series'] = [
-        max(2.0, icr_covenant + 0.3),  # Year 1: above covenant
-        max(2.2, icr_covenant + 0.5),  # Year 2: improving
-        max(2.4, icr_covenant + 0.7),  # Year 3: better
-        max(2.6, icr_covenant + 0.9),  # Year 4: good
-        max(2.8, icr_covenant + 1.1)   # Year 5: strong
-    ]
-    safe_metrics['LTV_Series'] = [
-        min(leverage_covenant - 0.5, 8.5),  # Year 1: below covenant
-        min(leverage_covenant - 1.0, 7.8),  # Year 2: improving
-        min(leverage_covenant - 1.5, 7.0),  # Year 3: better
-        min(leverage_covenant - 2.0, 6.2),  # Year 4: good  
-        min(leverage_covenant - 2.5, 5.5)   # Year 5: strong
-    ]
+# Use real metrics directly - no placeholders!
+irr = metrics['IRR']
+moic = metrics['MOIC'] 
+min_icr = metrics['Min_ICR']
+max_leverage = metrics['Max_LTV']
+exit_proceeds = metrics['Equity Value']
+
+# Alias for compatibility with existing plotting functions
+safe_metrics = metrics
 
 # --- Header KPIs ---
 col1, col2, col3, col4, col5 = st.columns(5)
@@ -347,18 +401,35 @@ with tab3:
         st.subheader(f"🎲 Monte Carlo Analysis ({mc_scenarios:,} scenarios)")
         
         @st.cache_data
-        def run_monte_carlo(n_scenarios, seed):
-            """Run Monte Carlo with caching"""
+        def run_monte_carlo(
+            entry_ev_ebitda, exit_ev_ebitda, debt_pct_of_ev, cash_sweep_pct, min_cash,
+            lease_liability_mult_of_ebitda, icr_hurdle, leverage_hurdle, 
+            days_receivables, days_payables, days_deferred_revenue,
+            senior_frac, mezz_frac, senior_rate, mezz_rate,
+            n_scenarios, seed, sg, sm, sx
+        ):
+            """Run Monte Carlo with caching based on all parameters"""
             try:
-                a = create_deal_assumptions()
-                # For now, just show placeholder
+                a = create_deal_assumptions_safe(
+                    entry_ev_ebitda, exit_ev_ebitda, debt_pct_of_ev, cash_sweep_pct, min_cash,
+                    lease_liability_mult_of_ebitda, icr_hurdle, leverage_hurdle, 
+                    days_receivables, days_payables, days_deferred_revenue,
+                    senior_frac, mezz_frac, senior_rate, mezz_rate
+                )
+                # For now, return placeholder - will wire to real MC function
                 return {"success_rate": 0.78, "median_irr": 0.127, "p10_irr": 0.093, "p90_irr": 0.173}
             except Exception as e:
                 st.error(f"Monte Carlo error: {str(e)}")
                 return None
         
         with st.spinner(f"🔄 Running Monte Carlo simulation ({mc_scenarios:,} scenarios)..."):
-            mc_results = run_monte_carlo(mc_scenarios, rng_seed)
+            mc_results = run_monte_carlo(
+                entry_multiple, exit_multiple, debt_pct, cash_sweep, min_cash,
+                lease_multiple, icr_covenant, leverage_covenant,
+                days_receivables, days_payables, days_deferred,
+                senior_frac, mezz_frac, senior_rate, mezz_rate,
+                mc_scenarios, rng_seed, sigma_growth, sigma_margin, sigma_multiple
+            )
         
         if mc_results:
             # Display MC summary metrics
@@ -381,7 +452,7 @@ with tab3:
             # Success rule explanation
             st.info(
                 "**Success Rule:** No covenant breach + positive exit equity + IRR ≥ 8%\n\n"
-                f"**Priors:** σ(growth)=±150 bps, σ(margin)=±200 bps, σ(multiple)=±0.5×\n\n"
+                f"**Priors:** σ(growth)=±{sigma_growth:.1%}, σ(margin)=±{sigma_margin:.1%}, σ(multiple)=±{sigma_multiple:.1f}×\n\n"
                 f"**RNG Seed:** {rng_seed} (for reproducibility)"
             )
         
@@ -402,7 +473,12 @@ with tab4:
             # Step 1: Prepare data
             status_text.text("📊 Step 1/5: Preparing deal assumptions and metrics...")
             progress_bar.progress(0.1)
-            a = create_deal_assumptions()
+            a = create_deal_assumptions_safe(
+                entry_multiple, exit_multiple, debt_pct, cash_sweep, min_cash,
+                lease_multiple, icr_covenant, leverage_covenant,
+                days_receivables, days_payables, days_deferred,
+                senior_frac, mezz_frac, senior_rate, mezz_rate
+            )
             
             # Step 2: Generate charts
             status_text.text("📈 Step 2/5: Generating covenant compliance chart...")
