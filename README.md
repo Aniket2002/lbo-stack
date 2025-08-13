@@ -21,7 +21,7 @@ python orchestrator_advanced.py
 
 **Interactive Web App:**
 ```bash
-streamlit run streamlit_app.py
+streamlit run src/modules/streamlit_app.py
 ```
 
 **Quick Monte Carlo (200 scenarios):**
@@ -68,6 +68,7 @@ lbo-stack/
 ├── src/modules/
 │   ├── orchestrator_advanced.py         # Main LBO model
 │   ├── lbo_model.py                     # Core financial modeling
+│   ├── streamlit_app.py                 # Interactive web application
 │   └── fund_waterfall.py               # Fund economics and waterfall
 ├── data/
 │   ├── accor_assumptions.csv           # Model assumptions
@@ -80,7 +81,7 @@ lbo-stack/
 │   ├── monte_carlo.png                 # Monte Carlo simulation results
 │   ├── sensitivity_heatmap.png         # Sensitivity analysis heatmap
 │   └── sources_uses.png               # Sources & uses of funds
-├── streamlit_app.py                    # Interactive web application
+├── streamlit_app.py                    # Legacy entry point (use src/modules/streamlit_app.py)
 ├── requirements.txt                     # Python dependencies
 └── README.md                           # This documentation
 ```
@@ -137,13 +138,16 @@ Sources and uses of funds at transaction entry:
 - Transaction costs allocation
 - Total use of funds summary
 
-### 💻 Interactive Web App (`streamlit_app.py`)
+### 💻 Interactive Web App (`src/modules/streamlit_app.py`)
 Professional Streamlit application featuring:
-- **Real-time assumption testing**: Adjust entry/exit multiples, leverage, covenants
-- **Live covenant monitoring**: Watch ICR and Net Debt/EBITDA move with assumptions
-- **Interactive Monte Carlo**: Configure scenarios (100/200/400) with reproducible seeds
-- **One-click PDF generation**: Produces the exact same report as CLI version
-- **Professional KPI dashboard**: IRR, MOIC, covenant status with visual indicators
+- **True User Control**: Form-based inputs with parameterized caching - changes actually drive results
+- **Real-time LBO Analysis**: Every adjustment triggers live model recalculation with authentic metrics
+- **Advanced Debt Structure Controls**: Configure senior/mezzanine tranches, rates, and covenant levels
+- **Interactive Monte Carlo**: Configure scenarios (200/400/1000+) with customizable volatility priors
+- **Live Covenant Dashboard**: Real covenant monitoring with breach detection and headroom visualization
+- **One-click PDF generation**: Produces identical report to CLI version with current assumptions
+- **Professional KPI Display**: Live IRR, MOIC, leverage metrics with color-coded covenant status
+- **Enhanced User Experience**: VP/IC-ready presentation quality with organized sidebar controls
 
 ## 🔧 Customization
 
@@ -175,7 +179,8 @@ Edit `data/accor_assumptions.csv` to modify:
 - **Equity cash-flow vector** printed and reconciled to IRR
 - Reproducible: one command regenerates the exact PDF; RNG seed pinned
 - Unit tests for IRR monotonicity and equity-vector reconciliation
-- **Interactive Streamlit app** for live scenario testing and covenant monitoring
+- **Interactive Streamlit app** transforms from static dashboard to dynamic user-controlled cockpit
+- **VP/IC-ready presentation quality** with professional polish and real-time covenant monitoring
 
 ## 🏗️ Technical Details
 
