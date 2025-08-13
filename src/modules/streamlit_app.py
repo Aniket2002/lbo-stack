@@ -14,6 +14,7 @@ from orchestrator_advanced import (
     DealAssumptions,
     run_comprehensive_lbo_analysis,
     build_monte_carlo_projections,
+    monte_carlo_analysis,
     plot_covenant_headroom,
     plot_deleveraging_path,
     plot_exit_equity_bridge,
@@ -416,8 +417,12 @@ with tab3:
                     days_receivables, days_payables, days_deferred_revenue,
                     senior_frac, mezz_frac, senior_rate, mezz_rate
                 )
-                # For now, return placeholder - will wire to real MC function
-                return {"success_rate": 0.78, "median_irr": 0.127, "p10_irr": 0.093, "p90_irr": 0.173}
+                
+                # Run Monte Carlo analysis using the orchestrator function
+                # Note: For now using default priors - can enhance later to use user inputs
+                mc_results = monte_carlo_analysis(a, n=n_scenarios, seed=seed)
+                return mc_results
+                
             except Exception as e:
                 st.error(f"Monte Carlo error: {str(e)}")
                 return None
@@ -432,11 +437,11 @@ with tab3:
             )
         
         if mc_results:
-            # Display MC summary metrics
-            success_rate = mc_results.get('success_rate', 0.0)
-            median_irr = mc_results.get('median_irr', 0.0)
-            p10_irr = mc_results.get('p10_irr', 0.0)
-            p90_irr = mc_results.get('p90_irr', 0.0)
+            # Display MC summary metrics - map orchestrator keys to display values
+            success_rate = mc_results.get('Success_Rate', 0.0)
+            median_irr = mc_results.get('Median_IRR', 0.0)
+            p10_irr = mc_results.get('P10_IRR', 0.0)
+            p90_irr = mc_results.get('P90_IRR', 0.0)
             
             col1, col2, col3, col4 = st.columns(4)
             
