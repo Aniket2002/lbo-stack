@@ -1,33 +1,43 @@
-# streamlit_app.py - Legacy entry point for Streamlit Cloud compatibility
+# streamlit_app.py - Main LBO Stack Application
 import streamlit as st
+import pandas as pd
+import numpy as np
 from pathlib import Path
 import sys
+import warnings
+from datetime import datetime
+import matplotlib.pyplot as plt
+import matplotlib.backends.backend_pdf
+warnings.filterwarnings('ignore')
 
-# Add src/modules to path
+# Add src/modules to path for imports
 sys.path.append(str(Path(__file__).resolve().parent / "src" / "modules"))
 
-# Import and run the main app
-def main():
-    st.error("⚠️ **This is a legacy entry point.**")
-    st.info("For the full experience, please run: `streamlit run src/modules/streamlit_app.py`")
-    st.markdown("---")
-    
-    # Try to import and run the main app
-    try:
-        from streamlit_app import main as run_main_app
-        run_main_app()
-    except ImportError:
-        st.error("Could not find the main app. Please check your file structure.")
-        st.code("""
-        Expected structure:
-        lbo-stack/
-        ├── streamlit_app.py (this file)
-        └── src/modules/
-            └── streamlit_app.py (main app)
-        """)
+from orchestrator_advanced import (
+    DealAssumptions,
+    run_comprehensive_lbo_analysis,
+    build_monte_carlo_projections,
+    monte_carlo_analysis,
+    plot_covenant_headroom,
+    plot_deleveraging_path,
+    plot_exit_equity_bridge,
+    plot_sources_and_uses,
+    plot_sensitivity_heatmap,
+    plot_monte_carlo_results,
+    get_output_path,
+    create_enhanced_pdf_report
+)
 
-if __name__ == "__main__":
-    main()
+# Ensure output directory exists
+OUT = Path(__file__).resolve().parent / "output"
+OUT.mkdir(parents=True, exist_ok=True)
+
+st.set_page_config(
+    page_title="LBO Stack – Accor Analysis", 
+    page_icon="💼",
+    layout="wide",
+    initial_sidebar_state="expanded"
+)
 
 # Ensure output directory exists
 OUT = Path(__file__).resolve().parent / "output"
