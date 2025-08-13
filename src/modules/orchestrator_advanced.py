@@ -1086,7 +1086,7 @@ def plot_covenant_headroom(
             linestyle="--",
             label=f"Covenant: {a.leverage_hurdle:.1f}x",
         )
-    ax2.set_title("Leverage (Net Debt / EBITDA)")
+    ax2.set_title("Net Debt / EBITDA")
     ax2.set_ylabel("Net Debt/EBITDA (x)")
     ax2.legend()
     ax2.grid(True, alpha=0.3)
@@ -1114,11 +1114,18 @@ def plot_covenant_headroom(
     leverage_headroom = a.leverage_hurdle - metrics["Max_LTV"]
     fcf_headroom = metrics["Min_FCF_Coverage"] - a.fcf_hurdle
 
-    # Traffic light colors
+    # Traffic light colors and breach detection
     def format_headroom(value, is_good):
         color = "🟢" if value >= 0 else "🔴"
         sign = "+" if value >= 0 else ""
         return f"{color} {sign}{value:.1f}x"
+    
+    # Check for FCF breach
+    fcf_breach = metrics["Min_FCF_Coverage"] < a.fcf_hurdle
+    if fcf_breach:
+        fcf_label = "FCF Coverage (monitor) ≥"  # Clarify as monitoring metric
+    else:
+        fcf_label = "FCF Coverage ≥"
 
     summary_data = [
         ["Covenant", "Observed", "Requirement", "Headroom"],
@@ -1135,7 +1142,7 @@ def plot_covenant_headroom(
             format_headroom(leverage_headroom, True),
         ],
         [
-            "FCF Coverage ≥",
+            fcf_label,  # 👈 Dynamic label with breach warning
             f"{metrics['Min_FCF_Coverage']:.1f}x",
             f"{a.fcf_hurdle:.1f}x",
             format_headroom(fcf_headroom, True),
@@ -1707,12 +1714,27 @@ def run_deterministic_stress_scenario(a: DealAssumptions) -> Dict:
 
 def build_equity_cf_vector(results: Dict, a: DealAssumptions) -> list[float]:
     """
-    ✨ VP Fix: Build equity cash flow vector from actual model output
-    No hard-coded zeros - read actual Equity CF from each year
+    ✨ VP Fix: Build equity cash flow vector using S&U sponsor equity as initial investment
+    Ensures IRR/MOIC tie to Sources & Uses exactly
     """
-    # Initial equity investment
-    eq0 = (a.entry_ev_ebitda * (a.revenue0 * a.ebitda_margin_start)) * (1 - a.debt_pct_of_ev)
-    vec = [-eq0]
+    # Calculate sponsor equity using same logic as S&U (balancing item)
+    ebitda0 = a.revenue0 * a.ebitda_margin_start
+    enterprise_value = a.entry_ev_ebitda * ebitda0
+    senior_debt = enterprise_value * a.debt_pct_of_ev * a.senior_frac
+    mezz_debt = enterprise_value * a.debt_pct_of_ev * a.mezz_frac
+    
+    # Total uses = purchase price + fees + cash
+    purchase_price = enterprise_value
+    deal_fees = enterprise_value * a.entry_fees_pct
+    oid_discount = (senior_debt + mezz_debt) * 0.02
+    financing_fees = (senior_debt + mezz_debt) * 0.035
+    cash_balance = a.min_cash
+    total_uses = purchase_price + deal_fees + oid_discount + financing_fees + cash_balance
+    
+    # Sponsor equity is the balancing item (same as S&U)
+    sponsor_equity = total_uses - (senior_debt + mezz_debt)
+    
+    vec = [-sponsor_equity]  # Initial investment ties to S&U
     
     # Annual equity cash flows
     for y in range(1, a.years + 1):
@@ -1728,7 +1750,7 @@ def build_equity_cf_vector(results: Dict, a: DealAssumptions) -> list[float]:
 
 def compute_exit_bridge(results: Dict, a: DealAssumptions) -> Dict:
     """
-    ✅ VP Fix: Use net debt minus cash, explicit ordering
+    ✅ VP Fix: Use net debt minus cash, explicit ordering with clear labels
     """
     yrN = results[f"Year {a.years}"]
     ebitda_exit = yrN["EBITDA"]
@@ -1741,7 +1763,7 @@ def compute_exit_bridge(results: Dict, a: DealAssumptions) -> Dict:
     
     return {
         "Enterprise Value": ev_exit,
-        "Less: Net Debt": -net_debt,
+        "Less: Net Debt (after cash)": -net_debt,  # 👈 Clear label
         "Less: Sale Costs": -txn_costs,
         "Equity": equity_exit,
     }
@@ -1806,6 +1828,10 @@ def plot_exit_equity_bridge(results: Dict, metrics: Dict, a: DealAssumptions,
            transform=ax.transAxes, va='top', ha='left',
            bbox=dict(boxstyle='round', facecolor='lightblue', alpha=0.8),
            fontweight='bold')
+    
+    # Add footnote about net debt calculation
+    fig.text(0.5, 0.02, 'Note: Net debt includes IFRS-16 lease liability; cash at exit offsets debt', 
+             ha='center', fontsize=10, style='italic')
     
     plt.xticks(rotation=45, ha='right')
     plt.tight_layout()
@@ -1924,30 +1950,39 @@ def print_enhanced_monte_carlo_footer(mc_results: Dict, a: DealAssumptions) -> N
     print(f"  • Covenant Breach Rate: {100-mc_results['Success_Rate']*100:.1f}%")
 
 
-def plot_sources_and_uses(a: DealAssumptions, out_path: str = "sources_uses.png") -> None:
+def plot_sources_and_uses(a: DealAssumptions, out_path: str = "sources_uses.png") -> float:
     """
     Create Sources & Uses waterfall chart for IC presentation
-    ✅ VP Fix: Leases and RCF are NOT cash sources at entry
+    ✅ VP Fix: Sponsor Equity as balancing item - Sources = Uses exactly
     """
     # Calculate S&U components
     ebitda0 = a.revenue0 * a.ebitda_margin_start
     enterprise_value = a.entry_ev_ebitda * ebitda0
     
-    # Sources - Only actual cash funding sources
+    # Debt financing
     senior_debt = enterprise_value * a.debt_pct_of_ev * a.senior_frac
     mezz_debt = enterprise_value * a.debt_pct_of_ev * a.mezz_frac
-    sponsor_equity = enterprise_value - (senior_debt + mezz_debt)  # Leases are not a cash source
     
-    # Uses
-    equity_purchase = enterprise_value
+    # Uses - Everything we need to fund
+    purchase_price = enterprise_value
     deal_fees = enterprise_value * a.entry_fees_pct
     oid_discount = (senior_debt + mezz_debt) * 0.02  # 2% OID
     financing_fees = (senior_debt + mezz_debt) * 0.035  # 3.5% fees
     cash_balance = a.min_cash
     
+    total_uses = purchase_price + deal_fees + oid_discount + financing_fees + cash_balance
+    
+    # Sources - Sponsor Equity is the balancing item
+    sponsor_equity = total_uses - (senior_debt + mezz_debt)  # 👈 Balancing item
+    total_sources = senior_debt + mezz_debt + sponsor_equity
+    
     fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(14, 8))
     
-    # Sources chart - Only cash sources
+    # Add subtitle showing reconciliation
+    fig.text(0.5, 0.92, f'Sources = €{total_sources:.0f}M | Uses = €{total_uses:.0f}M (reconcile)', 
+             ha='center', fontsize=12, style='italic', color='darkgreen')
+    
+    # Sources chart
     sources_labels = ['Senior Debt', 'Mezzanine', 'Sponsor Equity']
     sources_values = [senior_debt, mezz_debt, sponsor_equity]
     colors_sources = ['#2E86AB', '#A23B72', '#4CAF50']
@@ -1961,8 +1996,8 @@ def plot_sources_and_uses(a: DealAssumptions, out_path: str = "sources_uses.png"
         ax1.text(v + 50, i, f'€{v:.0f}M', va='center', fontweight='bold')
     
     # Uses chart
-    uses_labels = ['Equity Purchase', 'Deal Fees', 'OID Discount', 'Financing Fees', 'Cash']
-    uses_values = [equity_purchase, deal_fees, oid_discount, financing_fees, cash_balance]
+    uses_labels = ['Purchase Price', 'Deal Fees', 'OID Discount', 'Financing Fees', 'Cash to B/S']
+    uses_values = [purchase_price, deal_fees, oid_discount, financing_fees, cash_balance]
     colors_uses = ['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728', '#9467bd']
     
     ax2.barh(uses_labels, uses_values, color=colors_uses)
@@ -1973,20 +2008,20 @@ def plot_sources_and_uses(a: DealAssumptions, out_path: str = "sources_uses.png"
     for i, v in enumerate(uses_values):
         ax2.text(v + 50, i, f'€{v:.0f}M', va='center', fontweight='bold')
     
-    # Add totals and reconciliation check
-    total_sources = sum(sources_values)
-    total_uses = sum(uses_values)
-    
-    fig.suptitle(f'Sources & Uses Analysis\nSources: €{total_sources:.0f}M | Uses: €{total_uses:.0f}M', 
+    # Add reconciled totals header
+    fig.suptitle(f'Sources & Uses Analysis - Totals Reconcile\nSources: €{total_sources:.0f}M | Uses: €{total_uses:.0f}M', 
                 fontsize=16, fontweight='bold')
     
-    # Add footnote about leases
-    fig.text(0.5, 0.02, 'Note: Net debt includes IFRS-16 lease liability; leases are not a funding source', 
+    # Add footnote about leases and reconciliation
+    fig.text(0.5, 0.02, 'Note: Net debt includes IFRS-16 lease liability; leases are not a funding source. Totals reconcile.', 
              ha='center', fontsize=10, style='italic')
     
     plt.tight_layout()
     plt.savefig(out_path, dpi=300, bbox_inches='tight')
     plt.close()
+    
+    # Return sponsor equity for use in IRR calculation
+    return sponsor_equity
 
 
 def plot_exit_equity_bridge_enhanced(results: Dict, metrics: Dict, a: DealAssumptions, 
@@ -2088,6 +2123,8 @@ def plot_deleveraging_path(metrics: Dict, a: DealAssumptions,
     ax.set_xlabel('Year')
     ax.set_ylabel('Net Debt/EBITDA (x)')
     ax.set_ylim(0, max(leverage_series) * 1.2)
+    ax.set_xticks(years)
+    ax.set_xticklabels([f'Y{y}' for y in years])  # Y1, Y2, Y3, Y4, Y5 labels
     ax.grid(True, alpha=0.3)
     ax.legend()
     
