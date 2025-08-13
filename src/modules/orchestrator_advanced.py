@@ -21,6 +21,18 @@ from fund_waterfall import compute_waterfall_by_year, summarize_waterfall
 from lbo_model import CovenantBreachError, DebtTranche, InsolvencyError, LBOModel
 
 # -----------------------------
+# Output Configuration
+# -----------------------------
+
+# Define output directory - go up two levels from src/modules to project root
+OUTPUT_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "output")
+
+def get_output_path(filename: str) -> str:
+    """Get full path for output file, ensuring output directory exists"""
+    os.makedirs(OUTPUT_DIR, exist_ok=True)
+    return os.path.join(OUTPUT_DIR, filename)
+
+# -----------------------------
 # Enhanced Deal Assumptions
 # -----------------------------
 
@@ -1499,24 +1511,24 @@ def main():
     print("📈 Creating charts...")
     charts = {}
 
-    plot_covenant_headroom(metrics, assumptions, "covenant_headroom.png")
-    charts["covenant"] = "covenant_headroom.png"
+    plot_covenant_headroom(metrics, assumptions, get_output_path("covenant_headroom.png"))
+    charts["covenant"] = get_output_path("covenant_headroom.png")
 
-    plot_sensitivity_heatmap(sens_df, "sensitivity_heatmap.png")
-    charts["sensitivity"] = "sensitivity_heatmap.png"
+    plot_sensitivity_heatmap(sens_df, get_output_path("sensitivity_heatmap.png"))
+    charts["sensitivity"] = get_output_path("sensitivity_heatmap.png")
 
-    plot_monte_carlo_results(mc_results, "monte_carlo.png")
-    charts["monte_carlo"] = "monte_carlo.png"
+    plot_monte_carlo_results(mc_results, get_output_path("monte_carlo.png"))
+    charts["monte_carlo"] = get_output_path("monte_carlo.png")
 
     # New IC-required charts
-    plot_sources_and_uses(assumptions, "sources_uses.png")
-    charts["sources_uses"] = "sources_uses.png"
+    plot_sources_and_uses(assumptions, get_output_path("sources_uses.png"))
+    charts["sources_uses"] = get_output_path("sources_uses.png")
 
-    plot_exit_equity_bridge(analysis_results["financial_projections"], metrics, assumptions, "exit_equity_bridge.png")
-    charts["exit_bridge"] = "exit_equity_bridge.png"
+    plot_exit_equity_bridge(analysis_results["financial_projections"], metrics, assumptions, get_output_path("exit_equity_bridge.png"))
+    charts["exit_bridge"] = get_output_path("exit_equity_bridge.png")
 
-    plot_deleveraging_path(metrics, assumptions, "deleveraging_path.png")
-    charts["deleveraging"] = "deleveraging_path.png"
+    plot_deleveraging_path(metrics, assumptions, get_output_path("deleveraging_path.png"))
+    charts["deleveraging"] = get_output_path("deleveraging_path.png")
 
     # Create PDF report with VP enhancements
     print("📄 Creating enhanced PDF report...")
@@ -1529,11 +1541,12 @@ def main():
         mc_results,
         equity_vector=equity_vector_results,
         stress_results=downside_results,
+        out_pdf=get_output_path("accor_lbo_enhanced.pdf")
     )
 
     print("\nAnalysis complete!")
-    print(f"Charts saved: {', '.join(charts.values())}")
-    print("Report saved: accor_lbo_enhanced.pdf")
+    print(f"Charts saved to output folder: {[os.path.basename(path) for path in charts.values()]}")
+    print(f"Report saved: {get_output_path('accor_lbo_enhanced.pdf')}")
 
     # Enhanced reporting per VP feedback
     print("\n" + "="*60)
