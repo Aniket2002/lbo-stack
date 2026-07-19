@@ -35,17 +35,12 @@ Reproducible examples and narrative walkthroughs live under `examples/`.
 
 ## 📊 Model Features
 
-### Base Case (Auto-generated example)
-- **IRR**: ~11–13% | **MOIC**: ~1.7–2.0× | **Hold**: 5 years
-- **Leverage (lease-adjusted)**: ~60–65% of EV at entry
-- **Covenants**: Net Debt/EBITDA ≤ **9.0×** (default), ICR ≥ **2.2×** (default) — both configurable in `data/accor_assumptions.csv`
-- **IFRS-16**: Lease-in-debt; lease interest included in ICR; lease liability included in net debt at exit
-- **Working capital**: **days-based** (AR/AP/deferred revenue)
+### Base Case Example
+The current example run is driven entirely by the assumptions in `data/accor_assumptions.csv` and the selected UI inputs.
 
 ### Advanced Analytics
 - **Sensitivity Analysis**: IRR vs **Terminal EBITDA Margin (±400 bps)** and **Exit Multiple (±1.0×)**
-- **Monte Carlo**: **400** scenarios (configurable), with printed priors and success rule:
-  σ(growth)=±150 bps, σ(margin)=±200 bps, σ(multiple)=±0.5×; success = no covenant breach + positive exit equity + IRR ≥ 8%
+- **Monte Carlo**: configurable scenarios with priors and success rule sourced from the current run inputs
 - **Deterministic Stress**: Named downside with four outputs (IRR, trough ICR, max ND/EBITDA, Breach Y/N)
 - **Equity Cash-Flow Vector**: IRR computed from the exact equity vector printed in the PDF
 
@@ -145,25 +140,14 @@ Edit `data/accor_assumptions.csv` to modify:
 
 ## 📈 Analysis Results Summary
 
-**Sample Results (from run: 2025-08-13, seed=42)**
-- Entry Multiple: **8.5×** | Exit Multiple: **9.0–10.0×**
-- Target Leverage (lease-adjusted): **~60–65% of EV**
-- Max Net Debt/EBITDA (observed): **~7.8–8.4×** vs covenant **9.0×**
-- Min ICR (observed): **~2.3–2.6×** vs covenant **2.2×**
-- Covenant Status: **Compliant (no breaches)**
-
-**Monte Carlo (N=400, seed=42)**
-- Success Rate: **~70–80%**
-- Median IRR: **~12–13%**
-- P10–P90: **~9–17%**
-- Success rule: **no covenant breach + positive exit equity + IRR ≥ 8%**
+The dashboard and PDF now display the current run outputs only. Fixed sample metrics have been removed so the documentation stays synchronized with the model inputs.
 
 ## ✅ Why this stands out to PE/IB recruiters
 - Lease-adjusted leverage and **explicit covenants** with headroom charts
 - **Sources & Uses**, **Exit Equity Bridge**, **Deleveraging Walk** embedded in the PDF
 - **Equity cash-flow vector** printed and reconciled to IRR
 - Reproducible: one command regenerates the exact PDF; RNG seed pinned
-- Unit tests for IRR monotonicity and equity-vector reconciliation
+- Unit tests for cash-flow reconciliation, waterfall allocation, and equity-vector consistency
 - **Interactive Streamlit app** for live scenario testing and covenant monitoring
 
 ## 🏗️ Technical Details

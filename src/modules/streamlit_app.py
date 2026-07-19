@@ -422,8 +422,12 @@ with tab3:
                 )
                 
                 # Run Monte Carlo analysis using the orchestrator function
-                # Note: For now using default priors - can enhance later to use user inputs
-                mc_results = monte_carlo_analysis(a, n=n_scenarios, seed=seed)
+                priors = {
+                    "growth_sigma": float(sg),
+                    "margin_sigma": float(sm),
+                    "multiple_sigma": float(sx),
+                }
+                mc_results = monte_carlo_analysis(a, n=n_scenarios, seed=seed, priors=priors)
                 return mc_results
                 
             except Exception as e:

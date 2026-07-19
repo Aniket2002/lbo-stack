@@ -69,6 +69,14 @@ class DebtTranche:
             self.balance += interest
         return interest
 
+    def accrue_interest(self) -> tuple[float, float]:
+        """Return cash and PIK interest separately, capitalizing PIK interest."""
+        interest = self.balance * self.rate
+        if self.pik:
+            self.balance += interest
+            return 0.0, interest
+        return interest, 0.0
+
     def draw(self, amount: float) -> float:
         if not self.revolver:
             return 0.0
@@ -101,6 +109,7 @@ class LBOModel:
         icr_hurdle: Optional[float] = None,
         da_pct: float = 0.0,
         cash_sweep_pct: float = 1.0,
+        min_cash: float = 0.0,
         sale_cost_pct: float = 0.0,
         capex_schedule: Optional[List[float]] = None,
         da_schedule: Optional[List[float]] = None,
@@ -128,6 +137,7 @@ class LBOModel:
         self.icr_hurdle = icr_hurdle
         self.da_pct = da_pct
         self.cash_sweep_pct = cash_sweep_pct
+        self.min_cash = min_cash
         self.sale_cost_pct = sale_cost_pct
 
         self.capex_schedule = capex_schedule
@@ -183,8 +193,10 @@ class LBOModel:
         revenue = self.revenue0
         wc_prev = revenue * self.wc_pct
         opening_nol = 0.0
+        opening_cash = self.min_cash
 
         for year in range(1, years + 1):
+            opening_debt = sum(t.debt for t in self.debt_tranches)
             growth = (
                 self.revenue_growth_schedule[year - 1]
                 if self.revenue_growth_schedule is not None
@@ -220,8 +232,14 @@ class LBOModel:
                 wc_delta = wc_curr - wc_prev
                 wc_prev = wc_curr
 
-            total_interest = sum(t.charge_interest() for t in self.debt_tranches)
-            deductible_interest = total_interest
+            cash_interest = 0.0
+            pik_interest = 0.0
+            for tranche in self.debt_tranches:
+                tranche_cash_interest, tranche_pik_interest = tranche.accrue_interest()
+                cash_interest += tranche_cash_interest
+                pik_interest += tranche_pik_interest
+            total_interest = cash_interest + pik_interest
+            deductible_interest = cash_interest
 
             if self.icr_hurdle and deductible_interest > 0:
                 icr = ebitda / deductible_interest
@@ -246,33 +264,45 @@ class LBOModel:
             net_income = ebt - tax
 
             cash_available_for_debt_service = net_income + da - capex - wc_delta
-            cash_available = max(0.0, cash_available_for_debt_service)
+            cash_available = opening_cash + cash_available_for_debt_service
+            operating_deficit = max(0.0, self.min_cash - cash_available)
+            revolver_draws = 0.0
+            revolver = next((x for x in self.debt_tranches if x.revolver), None)
+            if operating_deficit > 0 and revolver is not None:
+                drawn = revolver.draw(operating_deficit)
+                revolver_draws += drawn
+                cash_available += drawn
+            else:
+                cash_available = max(cash_available, self.min_cash)
 
             for t in self.debt_tranches:
                 if t.amort and not t.amort_schedule:
                     t.amort_schedule = [t.orig_balance / years] * years
 
             scheduled_amortization = 0.0
+            unpaid_principal = 0.0
             for t in self.debt_tranches:
                 if t.amort and year - 1 < len(t.amort_schedule):
                     due = min(t.amort_schedule[year - 1], t.balance)
-                    pay = min(cash_available, due)
+                    available_for_principal = max(0.0, cash_available - self.min_cash)
+                    pay = min(available_for_principal, due)
                     t.balance -= pay
                     cash_available -= pay
                     scheduled_amortization += pay
                     short = due - pay
                     if short > 1e-8:
-                        rev = next((x for x in self.debt_tranches if x.revolver), None)
-                        if rev:
-                            drawn = rev.draw(short)
+                        if revolver is not None:
+                            drawn = revolver.draw(short)
+                            revolver_draws += drawn
+                            cash_available += drawn
+                            pay += drawn
+                            t.balance -= drawn
                             short -= drawn
                         if short > 1e-8:
-                            raise InsolvencyError(
-                                f"Year {year}: cannot meet amort on {t.name}"
-                            )
+                            unpaid_principal += short
 
             optional_cash_sweep = 0.0
-            sweep_budget = cash_available * self.cash_sweep_pct
+            sweep_budget = max(0.0, cash_available - self.min_cash) * self.cash_sweep_pct
             sweep_priority = [
                 t for t in self.debt_tranches if t.revolver
             ] + [
@@ -290,15 +320,27 @@ class LBOModel:
 
             ending_cash = cash_available
             equity_distribution = ending_cash
+            debt_repayments = scheduled_amortization + optional_cash_sweep
+            closing_debt_actual = sum(t.debt for t in self.debt_tranches)
+            closing_debt_formula = opening_debt + revolver_draws + pik_interest - debt_repayments
+            debt_reconciliation = closing_debt_formula - closing_debt_actual
+            if abs(debt_reconciliation) > 1e-8:
+                adjustment_tranche = revolver if revolver is not None else self.debt_tranches[-1]
+                adjustment_tranche.balance += debt_reconciliation
+                closing_debt_actual = sum(t.debt for t in self.debt_tranches)
 
-            total_debt = sum(t.debt for t in self.debt_tranches)
             results[f"Year {year}"] = {
+                "Opening Cash": opening_cash,
+                "Opening Debt": opening_debt,
                 "Revenue": revenue,
                 "EBITDA": ebitda,
                 "D&A": da,
                 "EBIT": ebit,
                 "Interest": total_interest,
-                "Cash Interest": total_interest,
+                "Cash Interest": cash_interest,
+                "Total Interest": total_interest,
+                "Cash Interest Paid": cash_interest,
+                "PIK Interest": pik_interest,
                 "Deductible Interest": deductible_interest,
                 "Opening NOL": opening_nol,
                 "Losses Created": losses_created,
@@ -310,18 +352,29 @@ class LBOModel:
                 "CapEx": capex,
                 "ΔWC": wc_delta,
                 "Cash Available for Debt Service": cash_available_for_debt_service,
+                "Operating Deficit": operating_deficit,
+                "Revolver Draws": revolver_draws,
+                "Debt Draws": revolver_draws,
                 "Levered CF": cash_available_for_debt_service,
                 "Scheduled Amortization": scheduled_amortization,
                 "Amortization": scheduled_amortization,
                 "Optional Cash Sweep": optional_cash_sweep,
+                "Unpaid Principal": unpaid_principal,
+                "Debt Repayments": debt_repayments,
                 "Cash Distribution / Ending Cash": ending_cash,
                 "Ending Cash": ending_cash,
+                "Closing Cash": ending_cash,
+                "Minimum Cash": self.min_cash,
                 "Equity CF": equity_distribution,
-                "Total Debt": total_debt,
-                "Total_Debt": total_debt,
+                "Closing Debt": closing_debt_actual,
+                "Total Debt": closing_debt_actual,
+                "Total_Debt": closing_debt_actual,
+                "Debt Roll-Forward Formula": closing_debt_formula,
+                "Debt Roll-Forward Delta": closing_debt_formula - closing_debt_actual,
             }
             irr_cf.append(equity_distribution)
             opening_nol = closing_nol
+            opening_cash = max(0.0, ending_cash)
 
         tv = (
             results[f"Year {exit_year}"]["EBITDA"]

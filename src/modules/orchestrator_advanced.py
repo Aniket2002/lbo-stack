@@ -54,8 +54,12 @@ def irr(cashflows: list[float]) -> float:
     return rate
 
 # Local imports
-from fund_waterfall import compute_waterfall_by_year, summarize_waterfall
-from lbo_model import CovenantBreachError, DebtTranche, InsolvencyError, LBOModel
+try:
+    from .fund_waterfall import compute_waterfall_by_year, summarize_waterfall
+    from .lbo_model import CovenantBreachError, DebtTranche, InsolvencyError, LBOModel
+except ImportError:  # pragma: no cover - support direct script execution from src/modules
+    from fund_waterfall import compute_waterfall_by_year, summarize_waterfall
+    from lbo_model import CovenantBreachError, DebtTranche, InsolvencyError, LBOModel
 
 # -----------------------------
 # Output Configuration
@@ -63,6 +67,15 @@ from lbo_model import CovenantBreachError, DebtTranche, InsolvencyError, LBOMode
 
 # Define output directory - go up two levels from src/modules to project root
 OUTPUT_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "output")
+
+MONTE_CARLO_PRIORS_DEFAULT = {
+    "growth_sigma": 0.03,
+    "margin_sigma": 0.015,
+    "multiple_sigma": 0.75,
+    "growth_floor": -0.02,
+    "margin_floor": 0.10,
+    "multiple_floor": 6.0,
+}
 
 def get_output_path(filename: str) -> str:
     """Get full path for output file, ensuring output directory exists"""
@@ -134,52 +147,96 @@ class DealAssumptions:
 # -----------------------------
 
 
+def build_canonical_sources_and_uses(a: DealAssumptions) -> Dict:
+    """
+    Canonical sources-and-uses schedule used by every output surface.
+    """
+    ebitda0 = a.revenue0 * a.ebitda_margin_start
+    enterprise_value = a.entry_ev_ebitda * ebitda0
+
+    purchase_price = enterprise_value
+    refinancing = 0.0
+    acquired_cash = a.min_cash
+    retained_cash = a.min_cash
+
+    senior_debt = enterprise_value * a.debt_pct_of_ev * a.senior_frac
+    mezz_debt = enterprise_value * a.debt_pct_of_ev * a.mezz_frac
+    revolver_capacity = a.revolver_limit
+    financial_debt_sources = senior_debt + mezz_debt
+
+    ifrs16_liability = ebitda0 * a.lease_liability_mult_of_ebitda
+    fees = enterprise_value * 0.02
+    oid = senior_debt * 0.005
+    financing_fees = enterprise_value * 0.015
+    advisory_fees = enterprise_value * 0.005
+    transaction_costs = financing_fees + advisory_fees
+
+    uses = {
+        "Purchase Price": purchase_price,
+        "Refinancing": refinancing,
+        "Acquired Cash": acquired_cash,
+        "Fees": fees,
+        "OID": oid,
+        "Transaction Costs": transaction_costs,
+        "Retained Cash": retained_cash,
+    }
+    total_uses = sum(uses.values())
+
+    sources = {
+        "Financial Debt Sources": financial_debt_sources,
+        "Sponsor Equity": total_uses - financial_debt_sources,
+    }
+
+    total_sources = sum(sources.values())
+    sources["Total Sources"] = total_sources
+    uses["Total Uses"] = total_uses
+
+    return {
+        "enterprise_value": enterprise_value,
+        "ebitda0": ebitda0,
+        "sources": sources,
+        "uses": uses,
+        "sources_equals_uses": math.isclose(total_sources, total_uses, rel_tol=0, abs_tol=1e-6),
+        "equity_cheque": sources["Sponsor Equity"],
+        "ifrs16": {
+            "liability": ifrs16_liability,
+            "separate_from_cash_sources": True,
+        },
+        "memo": {
+            "revolver_capacity": revolver_capacity,
+        },
+    }
+
+
 def build_sources_and_uses_micro_graphic(a: DealAssumptions) -> Dict:
     """
     VP Feedback: Sources & Uses micro-graphic for entry
     Bridge: fees/OID, lease liability in net debt → equity cheque
     """
-    # Calculate base metrics
-    ebitda0 = a.revenue0 * a.ebitda_margin_start
-    enterprise_value = a.entry_ev_ebitda * ebitda0
-    purchase_price = enterprise_value
-
-    # Sources - calculate debt from EV percentage
-    total_debt = enterprise_value * a.debt_pct_of_ev
-    debt_proceeds = total_debt
-    lease_liability = ebitda0 * a.lease_liability_mult_of_ebitda
-    financing_fees = total_debt * 0.015  # 1.5% financing fees
-    advisory_fees = purchase_price * 0.005  # 0.5% advisory fees
-    oid_discount = total_debt * 0.01  # 1% OID
-
-    total_sources = debt_proceeds + lease_liability
-
-    # Uses
-    total_fees = financing_fees + advisory_fees + oid_discount
-
-    equity_cheque = purchase_price + total_fees - debt_proceeds
-    total_uses = purchase_price + total_fees
-
-    # Net debt calculation (VP specified: lease liability included)
-    total_net_debt = debt_proceeds + lease_liability
-    total_ev_including_leases = enterprise_value + lease_liability
-    ltv_percentage = (total_net_debt / total_ev_including_leases) * 100
+    canonical = build_canonical_sources_and_uses(a)
+    enterprise_value = canonical["enterprise_value"]
+    sources = canonical["sources"]
+    uses = canonical["uses"]
+    total_net_debt = sources["Financial Debt Sources"] + canonical["ifrs16"]["liability"]
+    total_ev_including_leases = enterprise_value + canonical["ifrs16"]["liability"]
+    ltv_percentage = (total_net_debt / total_ev_including_leases) * 100 if total_ev_including_leases else 0.0
 
     return {
         "sources": {
-            "debt_proceeds": debt_proceeds,
-            "lease_liability": lease_liability,
-            "total_sources": total_sources,
+            "financial_debt_sources": sources["Financial Debt Sources"],
+            "total_sources": sources["Total Sources"],
         },
         "uses": {
-            "purchase_price": purchase_price,
-            "financing_fees": financing_fees,
-            "advisory_fees": advisory_fees,
-            "oid_discount": oid_discount,
-            "total_fees": total_fees,
-            "total_uses": total_uses,
+            "purchase_price": uses["Purchase Price"],
+            "refinancing": uses["Refinancing"],
+            "acquired_cash": uses["Acquired Cash"],
+            "fees": uses["Fees"],
+            "oid": uses["OID"],
+            "transaction_costs": uses["Transaction Costs"],
+            "retained_cash": uses["Retained Cash"],
+            "total_uses": uses["Total Uses"],
         },
-        "equity_cheque": equity_cheque,
+        "equity_cheque": canonical["equity_cheque"],
         "net_debt_calculation": {
             "total_net_debt": total_net_debt,
             "enterprise_value": enterprise_value,
@@ -187,6 +244,8 @@ def build_sources_and_uses_micro_graphic(a: DealAssumptions) -> Dict:
         },
         "vp_label_hygiene": "Net Debt / EBITDA (leverage constraint)",
         "ltv_footnote": "LTV % = Net Debt / EV",
+        "sources_equals_uses": canonical["sources_equals_uses"],
+        "memo": canonical["memo"],
     }
 
 
@@ -279,45 +338,55 @@ def build_monte_carlo_footer(mc_results: Dict) -> Dict:
     """
     return {
         "priors_used": {
-            "growth_sigma": "±150bps (revenue growth volatility)",
-            "margin_sigma": "±200bps (EBITDA margin volatility)",
-            "multiple_sigma": "±0.5x (exit multiple volatility)",
+            "growth_sigma": f"±{mc_results.get('Priors', MONTE_CARLO_PRIORS_DEFAULT)['growth_sigma']:.1%} (revenue growth volatility)",
+            "margin_sigma": f"±{mc_results.get('Priors', MONTE_CARLO_PRIORS_DEFAULT)['margin_sigma']:.1%} (EBITDA margin volatility)",
+            "multiple_sigma": f"±{mc_results.get('Priors', MONTE_CARLO_PRIORS_DEFAULT)['multiple_sigma']:.1f}x (exit multiple volatility)",
             "correlation": "Low correlation assumed between factors",
         },
-        "success_definition": ("No covenant breach + positive equity at exit"),
+        "success_definition": mc_results.get("SuccessDef", "No covenant breach + positive equity at exit"),
         "methodology": ("400 Monte Carlo paths with calibrated industry priors"),
         "results_summary": {
-            "median_irr": f"~{mc_results.get('Median_IRR', 0.10):.0%}",
-            "p10_irr": f"{mc_results.get('P10_IRR', 0.02):.1%}",
-            "p90_irr": f"{mc_results.get('P90_IRR', 0.15):.1%}",
-            "success_rate": f"{mc_results.get('Success_Rate', 1.0):.0%}",
-            "total_paths": 400,
+            "median_irr": f"{mc_results.get('Median_IRR', float('nan')):.1%}",
+            "p10_irr": f"{mc_results.get('P10_IRR', float('nan')):.1%}",
+            "p90_irr": f"{mc_results.get('P90_IRR', float('nan')):.1%}",
+            "success_rate": f"{mc_results.get('Success_Rate', 0.0):.0%}",
+            "total_paths": mc_results.get("Count", 0),
         },
-        "vp_interpretation": ("Calibrated priors show robust downside protection"),
+        "vp_interpretation": (
+            "Calibrated priors and outcomes are sourced from the same Monte Carlo run"
+        ),
         "footer_display": (
-            "MC: σ_growth ±150bps, σ_margin ±200bps, σ_multiple ±0.5x | "
-            "Success = No breach + positive equity | "
-            f"400 paths: median "
-            f"~{mc_results.get('Median_IRR', 0.10):.0%}, "
-            f"P10-P90 ~{mc_results.get('P10_IRR', 0.02):.1%}-"
-            f"{mc_results.get('P90_IRR', 0.15):.1%}"
+            f"MC: σ_growth ±{mc_results.get('Priors', MONTE_CARLO_PRIORS_DEFAULT)['growth_sigma']:.1%}, "
+            f"σ_margin ±{mc_results.get('Priors', MONTE_CARLO_PRIORS_DEFAULT)['margin_sigma']:.1%}, "
+            f"σ_multiple ±{mc_results.get('Priors', MONTE_CARLO_PRIORS_DEFAULT)['multiple_sigma']:.1f}x | "
+            f"Success = {mc_results.get('SuccessDef', 'No covenant breach + positive equity')} | "
+            f"{mc_results.get('Count', 0)} paths: median {mc_results.get('Median_IRR', float('nan')):.0%}, "
+            f"P10-P90 {mc_results.get('P10_IRR', float('nan')):.1%}-{mc_results.get('P90_IRR', float('nan')):.1%}"
         ),
     }
 
 
-def get_recruiter_ready_narrative() -> str:
+def get_recruiter_ready_narrative(metrics: Dict, a: DealAssumptions, mc_results: Optional[Dict] = None) -> str:
     """
-    VP Feedback: Recruiter-ready narrative (use verbatim)
+    Recruiter-ready narrative built from the current run, not hard-coded samples.
     """
+    mc_results = mc_results or {}
+    irr = metrics.get("IRR", float("nan"))
+    moic = metrics.get("MOIC", float("nan"))
+    min_icr = metrics.get("Min_ICR", float("nan"))
+    max_lev = metrics.get("Max_LTV", float("nan"))
+    median_irr = mc_results.get("Median_IRR", float("nan"))
+    p10 = mc_results.get("P10_IRR", float("nan"))
+    p90 = mc_results.get("P90_IRR", float("nan"))
+    success_rate = mc_results.get("Success_Rate", float("nan"))
     return (
-        "Using a lease-in-debt framework for Accor, base returns are "
-        "~9% IRR / 1.7× MOIC at 65% leverage with 8.5× in / 9.0× out. "
-        "We track covenants explicitly—min ICR 2.5×, max Net Debt/EBITDA "
-        "8.4×, no breaches—and run both grid and Monte Carlo risk views; "
-        "MC (400 paths) gives a ~10% median IRR with ~2–15% P10–P90 and "
-        "100% success under calibrated priors. The appendix explains the "
-        "IFRS-16 choice and keeps lease treatment consistent at entry "
-        "and exit."
+        f"Using a lease-in-debt framework for Accor, the current run shows "
+        f"{irr:.1%} IRR / {moic:.2f}× MOIC at {a.debt_pct_of_ev:.0%} leverage. "
+        f"We track covenants explicitly with min ICR {min_icr:.2f}× and max "
+        f"Net Debt/EBITDA {max_lev:.2f}×, and the Monte Carlo run is sourced "
+        f"from the same priors used in the analysis output. "
+        f"Current Monte Carlo summary: median IRR {median_irr:.1%}, P10–P90 "
+        f"{p10:.1%}–{p90:.1%}, success rate {success_rate:.1%}."
     )
 
 
@@ -369,61 +438,28 @@ def build_sources_and_uses(a: DealAssumptions) -> Dict:
     Build Sources & Uses table with fees, OID, and equity cheque
     Enhanced per VP feedback: leases in net debt, true LTV calculation
     """
-    ebitda0 = a.revenue0 * a.ebitda_margin_start
-    enterprise_value = a.entry_ev_ebitda * ebitda0
-
-    # Sources
-    senior_debt = enterprise_value * a.debt_pct_of_ev * a.senior_frac
-    mezz_debt = enterprise_value * a.debt_pct_of_ev * a.mezz_frac
-    total_debt = senior_debt + mezz_debt
-
-    # Add IFRS-16 lease liability (critical for hotels)
-    lease_liability = ebitda0 * a.lease_liability_mult_of_ebitda
-    total_net_debt = total_debt + lease_liability  # VP: leases in net debt
-
-    # Equity from balancing
-    equity_contribution = enterprise_value - total_debt
-
-    total_sources = enterprise_value
-
-    # Uses
-    purchase_price = enterprise_value
-    financing_fees = enterprise_value * 0.02  # 2% financing fees
-    advisory_fees = enterprise_value * 0.005  # 50bps advisory
-    other_fees = enterprise_value * 0.005  # Legal, accounting, etc.
-    oid_discount = senior_debt * 0.005  # 50bps OID
-
-    total_uses = (
-        purchase_price + financing_fees + advisory_fees + other_fees + oid_discount
-    )
-
-    # VP feedback: Add true LTV calculation
-    true_ltv_pct = total_net_debt / enterprise_value * 100
+    canonical = build_canonical_sources_and_uses(a)
+    enterprise_value = canonical["enterprise_value"]
+    ebitda0 = canonical["ebitda0"]
+    sources = canonical["sources"]
+    uses = canonical["uses"]
+    total_net_debt = sources["Financial Debt Sources"] + canonical["ifrs16"]["liability"]
 
     return {
         "enterprise_value": enterprise_value,
         "sources": {
-            "Senior Debt": senior_debt,
-            "Mezzanine Debt": mezz_debt,
-            "IFRS-16 Leases": lease_liability,
-            "Equity Contribution": equity_contribution,
-            "Total Sources": total_sources,
+            "Financial Debt Sources": sources["Financial Debt Sources"],
+            "Revolver Capacity": sources["Revolver Capacity"],
+            "IFRS-16 Liabilities": canonical["ifrs16"]["liability"],
+            "Sponsor Equity": sources["Sponsor Equity"],
+            "Total Sources": sources["Total Sources"],
         },
-        "uses": {
-            "Purchase Price": purchase_price,
-            "Financing Fees": financing_fees,
-            "Advisory Fees": advisory_fees,
-            "Other Transaction Costs": other_fees,
-            "OID/Discount": oid_discount,
-            "Total Uses": total_uses,
-        },
+        "uses": uses,
         "net_debt_entry": total_net_debt,
-        "equity_cheque": (
-            equity_contribution + financing_fees + advisory_fees + other_fees
-        ),
-        # VP additions
-        "true_ltv_pct": true_ltv_pct,
-        "leverage_entry": total_net_debt / ebitda0,
+        "equity_cheque": canonical["equity_cheque"],
+        "true_ltv_pct": (total_net_debt / enterprise_value * 100) if enterprise_value else 0.0,
+        "leverage_entry": total_net_debt / ebitda0 if ebitda0 else 0.0,
+        "sources_equals_uses": canonical["sources_equals_uses"],
     }
 
 
@@ -750,6 +786,7 @@ def build_enhanced_lbo_config(a: DealAssumptions) -> Dict:
         ltv_hurdle=None,  # ❌ Remove EV-based LTV check - enforce Net Debt/EBITDA in wrapper
         da_pct=a.da_pct_of_revenue,
         cash_sweep_pct=a.cash_sweep_pct,
+        min_cash=a.min_cash,
         sale_cost_pct=a.sale_cost_pct,
     )
     return cfg
@@ -815,9 +852,9 @@ def run_comprehensive_lbo_analysis(a: DealAssumptions) -> Dict:
     equity_value = metrics.get("Equity Value", 0)
     initial_equity = enterprise_value - total_debt
 
-    # Convert to fund waterfall inputs (in millions)
-    calls = [initial_equity / 1e6, 0, 0, 0, 0]  # Initial equity call
-    distributions = [0, 0, 0, 0, equity_value / 1e6]  # Exit distribution
+    # Fund waterfall inputs already live in model units; do not rescale.
+    calls = [initial_equity, 0, 0, 0, 0]
+    distributions = [0, 0, 0, 0, equity_value]
 
     fund_results = compute_waterfall_by_year(
         committed_capital=500.0,  # €500m fund
@@ -865,7 +902,7 @@ def run_comprehensive_lbo_analysis(a: DealAssumptions) -> Dict:
     irr_validation = validate_irr_cashflows(results, a)
 
     # VP Recruiter-Ready Narrative
-    narrative = get_recruiter_ready_narrative()
+    narrative = get_recruiter_ready_narrative(metrics, a, mc_results)
 
     # Build Monte Carlo outputs (existing)
     mc_ebitda = build_monte_carlo_projections(a)
@@ -957,6 +994,36 @@ def run_enhanced_base_case(a: DealAssumptions) -> Tuple[Dict, Dict]:
         
         metrics["FCF_Coverage_Series"] = fcf_coverage_series
 
+        opening_debt_series = []
+        closing_debt_series = []
+        debt_draw_series = []
+        debt_repayment_series = []
+        cash_opening_series = []
+        cash_closing_series = []
+        cash_roll_forward_checks = []
+        debt_roll_forward_checks = []
+        for y in range(1, a.years + 1):
+            yr = results[f"Year {y}"]
+            opening_debt = yr.get("Opening Debt", 0.0)
+            closing_debt = yr.get("Closing Debt", yr.get("Total Debt", 0.0))
+            debt_draws = yr.get("Debt Draws", 0.0)
+            pik_interest = yr.get("PIK Interest", 0.0)
+            debt_repayments = yr.get("Debt Repayments", 0.0)
+            opening_cash = yr.get("Opening Cash", 0.0)
+            closing_cash = yr.get("Closing Cash", yr.get("Ending Cash", 0.0))
+            opening_debt_series.append(opening_debt)
+            closing_debt_series.append(closing_debt)
+            debt_draw_series.append(debt_draws)
+            debt_repayment_series.append(debt_repayments)
+            cash_opening_series.append(opening_cash)
+            cash_closing_series.append(closing_cash)
+            debt_roll_forward_checks.append(
+                abs((opening_debt + debt_draws + pik_interest - debt_repayments) - closing_debt)
+            )
+            cash_roll_forward_checks.append(
+                abs((opening_cash + yr.get("Cash Available for Debt Service", 0.0) + debt_draws - debt_repayments) - closing_cash)
+            )
+
         # FIX: Correct covenant headroom calculations
         # Filter out infinite ICRs when computing minimum
         finite_icrs = [icr for icr in icr_series if icr != float("inf")]
@@ -973,6 +1040,15 @@ def run_enhanced_base_case(a: DealAssumptions) -> Tuple[Dict, Dict]:
         metrics["ICR_Breach"] = a.icr_hurdle and finite_icrs and min(finite_icrs) < a.icr_hurdle
         metrics["LTV_Breach"] = metrics["Leverage_Breach"]  # Keep for compatibility
         metrics["FCF_Breach"] = a.fcf_hurdle and min(fcf_coverage_series) < a.fcf_hurdle
+        metrics["Opening_Debt_Series"] = opening_debt_series
+        metrics["Closing_Debt_Series"] = closing_debt_series
+        metrics["Debt_Draw_Series"] = debt_draw_series
+        metrics["Debt_Repayment_Series"] = debt_repayment_series
+        metrics["Opening_Cash_Series"] = cash_opening_series
+        metrics["Closing_Cash_Series"] = cash_closing_series
+        metrics["Debt_Roll_Forward_Max_Delta"] = max(debt_roll_forward_checks) if debt_roll_forward_checks else 0.0
+        metrics["Cash_Roll_Forward_Max_Delta"] = max(cash_roll_forward_checks) if cash_roll_forward_checks else 0.0
+        metrics["Sources_Equals_Uses"] = build_canonical_sources_and_uses(a)["sources_equals_uses"]
 
         return results, metrics
 
@@ -1045,10 +1121,16 @@ def enhanced_sensitivity_grid(a: DealAssumptions) -> pd.DataFrame:
     return pivot
 
 
-def monte_carlo_analysis(a: DealAssumptions, n: int = 500, seed: int = 42) -> Dict:
+def monte_carlo_analysis(
+    a: DealAssumptions,
+    n: int = 500,
+    seed: int = 42,
+    priors: Optional[Dict[str, float]] = None,
+) -> Dict:
     """
     Monte Carlo simulation with realistic parameter ranges
     """
+    priors = {**MONTE_CARLO_PRIORS_DEFAULT, **(priors or {})}
     rng = np.random.default_rng(seed)
     scenario_records = []
     unconditional_irrs = []
@@ -1060,17 +1142,17 @@ def monte_carlo_analysis(a: DealAssumptions, n: int = 500, seed: int = 42) -> Di
 
     for scenario_id in range(n):
         # Sample key variables
-        exit_mult = rng.normal(a.exit_ev_ebitda, 0.75)
-        margin_end = rng.normal(a.ebitda_margin_end, 0.015)
-        rev_growth = rng.normal(a.rev_growth_geo, 0.02)
+        exit_mult = rng.normal(a.exit_ev_ebitda, priors["multiple_sigma"])
+        margin_end = rng.normal(a.ebitda_margin_end, priors["margin_sigma"])
+        rev_growth = rng.normal(a.rev_growth_geo, priors["growth_sigma"])
 
         # Create test case
         test_assumptions = DealAssumptions(
             **{
                 **a.__dict__,
-                "exit_ev_ebitda": max(exit_mult, 6.0),  # Floor at 6x
-                "ebitda_margin_end": max(margin_end, 0.10),  # Floor at 10%
-                "rev_growth_geo": max(rev_growth, -0.02),  # Floor at -2%
+                "exit_ev_ebitda": max(exit_mult, priors["multiple_floor"]),
+                "ebitda_margin_end": max(margin_end, priors["margin_floor"]),
+                "rev_growth_geo": max(rev_growth, priors["growth_floor"]),
             }
         )
 
@@ -1173,9 +1255,9 @@ def monte_carlo_analysis(a: DealAssumptions, n: int = 500, seed: int = 42) -> Di
             "P10_Success_IRR": float(np.percentile(successful_valid_irrs, 10)) if successful_valid_irrs else float("nan"),
             "P90_Success_IRR": float(np.percentile(successful_valid_irrs, 90)) if successful_valid_irrs else float("nan"),
             "Priors": {
-                "σ_growth": 0.03, 
-                "σ_margin": 0.015, 
-                "σ_multiple": 0.75
+                "growth_sigma": priors["growth_sigma"],
+                "margin_sigma": priors["margin_sigma"],
+                "multiple_sigma": priors["multiple_sigma"],
             },
             "SuccessDef": "No covenant breach, positive exit equity, and IRR ≥ 8%",
         }
@@ -1204,9 +1286,9 @@ def monte_carlo_analysis(a: DealAssumptions, n: int = 500, seed: int = 42) -> Di
             "P10_Success_IRR": float("nan"),
             "P90_Success_IRR": float("nan"),
             "Priors": {
-                "σ_growth": 0.03, 
-                "σ_margin": 0.015, 
-                "σ_multiple": 0.75
+                "growth_sigma": priors["growth_sigma"],
+                "margin_sigma": priors["margin_sigma"],
+                "multiple_sigma": priors["multiple_sigma"],
             },
             "SuccessDef": "No covenant breach, positive exit equity, and IRR ≥ 8%",
         }
