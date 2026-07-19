@@ -253,6 +253,9 @@ if base_results is None or deal_assumptions is None:
     st.error("Failed to run analysis. Please check your assumptions.")
     st.stop()
 
+assert base_results is not None
+assert deal_assumptions is not None
+
 # Extract metrics - fail loudly if missing critical data
 metrics = base_results.get('metrics', {})
 projections = base_results.get('financial_projections', {})

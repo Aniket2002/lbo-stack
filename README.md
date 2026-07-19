@@ -25,11 +25,13 @@ streamlit run streamlit_app.py
 ```
 
 ### Generated Outputs
-All analysis files are automatically saved to the `output/` folder:
+All analysis files are automatically saved to the runtime `output/` folder:
 - **PDF Report**: Comprehensive analysis document
 - **Charts**: Professional visualizations and analysis charts
 - **Console**: Detailed financial metrics and results
 - **Interactive App**: Real-time assumption testing and live covenant tracking
+
+Reproducible examples and narrative walkthroughs live under `examples/`.
 
 ## 📊 Model Features
 
@@ -65,14 +67,8 @@ lbo-stack/
 ├── data/
 │   ├── accor_assumptions.csv           # Model assumptions
 │   └── accor_historical_recreated.csv  # Historical financial data
-├── output/                             # Generated analysis outputs
-│   ├── accor_lbo_enhanced.pdf          # Comprehensive analysis report
-│   ├── covenant_headroom.png           # Covenant compliance tracking
-│   ├── deleveraging_path.png           # Debt reduction visualization  
-│   ├── exit_equity_bridge.png          # Exit value waterfall chart
-│   ├── monte_carlo.png                 # Monte Carlo simulation results
-│   ├── sensitivity_heatmap.png         # Sensitivity analysis heatmap
-│   └── sources_uses.png               # Sources & uses of funds
+├── examples/                           # Reproducible examples and walkthroughs
+├── output/                             # Runtime analysis outputs (gitignored)
 ├── streamlit_app.py                    # Interactive web application
 ├── requirements.txt                     # Python dependencies
 └── README.md                           # This documentation
@@ -80,8 +76,8 @@ lbo-stack/
 
 ## 📊 Output Files Description
 
-### 📄 PDF Report (`accor_lbo_enhanced.pdf`)
-Comprehensive analysis document containing:
+### 📄 PDF Report
+Generate the report from the CLI or Streamlit app. The runtime PDF contains:
 - Executive summary with key metrics
 - Detailed equity cash flow vector analysis
 - Embedded charts and visualizations
@@ -90,40 +86,40 @@ Comprehensive analysis document containing:
 
 ### 📈 Chart Files
 
-#### `covenant_headroom.png`
+#### Covenant headroom chart
 Visual tracking of covenant compliance throughout the investment period:
 - Net Debt/EBITDA ratio vs covenant threshold
 - Interest Coverage Ratio (ICR) vs minimum requirement
 - Color-coded compliance indicators
 
-#### `deleveraging_path.png` 
+#### Deleveraging path chart
 Debt reduction visualization showing:
 - Total debt outstanding over time
 - Annual debt paydown amounts
 - EBITDA growth trajectory
 - Net leverage ratio evolution
 
-#### `exit_equity_bridge.png`
+#### Exit equity bridge chart
 Exit value waterfall chart displaying:
 - Enterprise value at exit
 - Less: Outstanding debt
 - Transaction costs and fees
 - Net proceeds to equity investors
 
-#### `monte_carlo.png`
+#### Monte Carlo chart
 Monte Carlo simulation results featuring:
 - IRR distribution histogram
 - Success rate analysis
 - P10/P50/P90 percentile markers
 - Risk assessment metrics
 
-#### `sensitivity_heatmap.png`
+#### Sensitivity heatmap
 Two-dimensional sensitivity analysis showing:
 - IRR sensitivity to **Terminal EBITDA Margin (±400 bps)** and **Exit Multiple (±1.0×)** assumptions
 - Color-coded heat map for visual impact assessment
 - Base case positioning within scenario range
 
-#### `sources_uses.png`
+#### Sources and uses chart
 Sources and uses of funds at transaction entry:
 - Equity contribution breakdown
 - Debt facilities sizing

@@ -9,12 +9,49 @@ from typing import Dict, Optional, Tuple
 
 import matplotlib.pyplot as plt
 import numpy as np
-import numpy_financial as npf
+try:
+    import numpy_financial as npf
+except Exception:  # pragma: no cover - fallback for local environments without the package
+    npf = None
 import pandas as pd
 from fpdf import FPDF
+from fpdf.enums import XPos, YPos
 
 # Set matplotlib backend to avoid display issues
 plt.switch_backend('Agg')
+
+
+def irr(cashflows: list[float]) -> float:
+    """
+    Local IRR helper with a fallback when numpy_financial is unavailable.
+    """
+    if npf is not None:
+        try:
+            return float(npf.irr(cashflows))
+        except Exception:
+            return float("nan")
+
+    if len(cashflows) < 2:
+        return float("nan")
+
+    rate = 0.1
+    for _ in range(100):
+        npv = 0.0
+        d_npv = 0.0
+        for period, cashflow in enumerate(cashflows):
+            discount = (1 + rate) ** period
+            npv += cashflow / discount
+            if period > 0:
+                d_npv -= period * cashflow / ((1 + rate) ** (period + 1))
+        if abs(d_npv) < 1e-12:
+            break
+        next_rate = rate - npv / d_npv
+        if abs(next_rate - rate) < 1e-10:
+            rate = next_rate
+            break
+        rate = next_rate
+
+    return rate
 
 # Local imports
 from fund_waterfall import compute_waterfall_by_year, summarize_waterfall
@@ -635,6 +672,47 @@ def build_wc_schedule(a: DealAssumptions) -> list[float]:
     return sched
 
 
+def build_revenue_growth_schedule(a: DealAssumptions) -> list[float]:
+    """
+    Annual revenue growth schedule used by the operating bridge.
+    """
+    return [a.rev_growth_geo for _ in range(a.years)]
+
+
+def build_ebitda_margin_schedule(a: DealAssumptions) -> list[float]:
+    """
+    Annual EBITDA margin schedule linearly interpolated from start to end.
+    """
+    if a.years <= 1:
+        return [a.ebitda_margin_end]
+    return np.linspace(a.ebitda_margin_start, a.ebitda_margin_end, a.years).tolist()
+
+
+def build_capex_schedule(a: DealAssumptions) -> list[float]:
+    """
+    Annual CapEx schedule linked to projected revenue.
+    """
+    revenue = a.revenue0
+    schedule: list[float] = []
+    capex_rate = a.maintenance_capex_pct + a.growth_capex_pct
+    for _ in range(a.years):
+        revenue *= 1 + a.rev_growth_geo
+        schedule.append(revenue * capex_rate)
+    return schedule
+
+
+def build_da_schedule(a: DealAssumptions) -> list[float]:
+    """
+    Annual D&A schedule linked to projected revenue.
+    """
+    revenue = a.revenue0
+    schedule: list[float] = []
+    for _ in range(a.years):
+        revenue *= 1 + a.rev_growth_geo
+        schedule.append(revenue * a.da_pct_of_revenue)
+    return schedule
+
+
 def build_enhanced_lbo_config(a: DealAssumptions) -> Dict:
     """
     Build LBO config with realistic assumptions
@@ -656,6 +734,10 @@ def build_enhanced_lbo_config(a: DealAssumptions) -> Dict:
         ebitda_margin=a.ebitda_margin_start,
         capex_pct=a.maintenance_capex_pct + a.growth_capex_pct,
         wc_pct=0.0,  # Don't use % - will be overridden by days-based schedule
+        revenue_growth_schedule=build_revenue_growth_schedule(a),
+        ebitda_margin_schedule=build_ebitda_margin_schedule(a),
+        capex_schedule=build_capex_schedule(a),
+        da_schedule=build_da_schedule(a),
         wc_schedule=build_wc_schedule(a),  # ✅ Use days-based working capital
         tax_rate=a.tax_rate,
         exit_multiple=a.exit_ev_ebitda,
@@ -967,15 +1049,20 @@ def monte_carlo_analysis(a: DealAssumptions, n: int = 500, seed: int = 42) -> Di
     """
     Monte Carlo simulation with realistic parameter ranges
     """
-    np.random.seed(seed)
-    results = []
+    rng = np.random.default_rng(seed)
+    scenario_records = []
+    unconditional_irrs = []
+    successful_irrs = []
     breach_count = 0
+    insolvent_count = 0
+    negative_equity_count = 0
+    capital_loss_count = 0
 
-    for _ in range(n):
+    for scenario_id in range(n):
         # Sample key variables
-        exit_mult = np.random.normal(a.exit_ev_ebitda, 0.75)
-        margin_end = np.random.normal(a.ebitda_margin_end, 0.015)
-        rev_growth = np.random.normal(a.rev_growth_geo, 0.02)
+        exit_mult = rng.normal(a.exit_ev_ebitda, 0.75)
+        margin_end = rng.normal(a.ebitda_margin_end, 0.015)
+        rev_growth = rng.normal(a.rev_growth_geo, 0.02)
 
         # Create test case
         test_assumptions = DealAssumptions(
@@ -988,63 +1075,140 @@ def monte_carlo_analysis(a: DealAssumptions, n: int = 500, seed: int = 42) -> Di
         )
 
         try:
-            _, metrics = run_enhanced_base_case(test_assumptions)
+            projections, metrics = run_enhanced_base_case(test_assumptions)
             irr = metrics.get("IRR", float("nan"))
-            
-            # ✅ VP Fix: Proper success definition aligned with printed footer
-            # Success = no breach + positive equity + IRR > 8% (as stated in footer)
-            lev_breach = metrics.get("Leverage_Breach", False)
-            icr_breach = metrics.get("ICR_Breach", False)
-            equity_positive = (metrics.get("Equity Value", 0) > 0)
-            irr_valid = not math.isnan(irr) and irr is not None
-            meets_return = irr_valid and (irr >= 0.08)  # 8% hurdle as stated in footer
-            
-            success = (not lev_breach) and (not icr_breach) and equity_positive and meets_return
-            
-            if success:
-                results.append(irr)
-            else:
-                breach_count += 1
-                
-        except Exception:
-            breach_count += 1
+            equity_value = metrics.get("Equity Value", float("nan"))
+            error_text = str(projections.get("Error", ""))
+            lev_breach = bool(metrics.get("Leverage_Breach", False))
+            icr_breach = bool(metrics.get("ICR_Breach", False))
+            insolvent = "insolv" in error_text.lower()
+            breached = lev_breach or icr_breach or bool(error_text)
+            negative_equity = (
+                equity_value is not None
+                and not (isinstance(equity_value, float) and math.isnan(equity_value))
+                and equity_value < 0
+            )
+            capital_loss = negative_equity or (
+                irr is not None and not (isinstance(irr, float) and math.isnan(irr)) and irr < 0
+            )
+            irr_valid = irr is not None and not (isinstance(irr, float) and math.isnan(irr))
+            meets_return = irr_valid and irr >= 0.08
+            success = (not breached) and (not negative_equity) and meets_return
 
-    if results:
+            unconditional_irrs.append(float(irr) if irr_valid else float("nan"))
+            if success:
+                successful_irrs.append(float(irr))
+            if breached:
+                breach_count += 1
+            if insolvent:
+                insolvent_count += 1
+            if negative_equity:
+                negative_equity_count += 1
+            if capital_loss:
+                capital_loss_count += 1
+
+            scenario_records.append(
+                {
+                    "Scenario": scenario_id + 1,
+                    "Seed": seed,
+                    "Exit Multiple": test_assumptions.exit_ev_ebitda,
+                    "Ending Margin": test_assumptions.ebitda_margin_end,
+                    "Growth": test_assumptions.rev_growth_geo,
+                    "IRR": float(irr) if irr_valid else float("nan"),
+                    "Equity Value": equity_value,
+                    "Breached": breached,
+                    "Insolvent": insolvent,
+                    "Negative Equity": negative_equity,
+                    "Capital Loss": capital_loss,
+                    "Successful": success,
+                }
+            )
+
+        except Exception as exc:
+            breach_count += 1
+            insolvent_count += 1
+            scenario_records.append(
+                {
+                    "Scenario": scenario_id + 1,
+                    "Seed": seed,
+                    "Exit Multiple": test_assumptions.exit_ev_ebitda,
+                    "Ending Margin": test_assumptions.ebitda_margin_end,
+                    "Growth": test_assumptions.rev_growth_geo,
+                    "IRR": float("nan"),
+                    "Equity Value": float("nan"),
+                    "Breached": True,
+                    "Insolvent": True,
+                    "Negative Equity": False,
+                    "Capital Loss": True,
+                    "Successful": False,
+                    "Error": str(exc),
+                }
+            )
+
+    valid_irrs = [value for value in unconditional_irrs if value is not None and not math.isnan(value)]
+    successful_valid_irrs = [value for value in successful_irrs if value is not None and not math.isnan(value)]
+
+    if valid_irrs:
         return {
-            "IRRs": results,
-            "Count": len(results),
+            "Seed": seed,
+            "Scenarios": scenario_records,
+            "IRRs": unconditional_irrs,
+            "Successful_IRRs": successful_irrs,
+            "Count": n,
+            "Successful_Count": len(successful_valid_irrs),
             "Breaches": breach_count,
+            "Insolvent": insolvent_count,
+            "Negative_Equity": negative_equity_count,
+            "Capital_Loss": capital_loss_count,
             "N": n,
-            "Success_Rate": len(results) / n,
-            "Median_IRR": float(np.median(results)),
-            "P10_IRR": float(np.percentile(results, 10)),
-            "P90_IRR": float(np.percentile(results, 90)),
-            "Std_IRR": np.std(results),
-            # ✅ VP Fix: Enhanced MC metadata
+            "Success_Rate": len(successful_valid_irrs) / n,
+            "Breach_Frequency": breach_count / n,
+            "Insolvency_Frequency": insolvent_count / n,
+            "Capital_Loss_Frequency": capital_loss_count / n,
+            "Median_IRR": float(np.median(valid_irrs)),
+            "P10_IRR": float(np.percentile(valid_irrs, 10)),
+            "P90_IRR": float(np.percentile(valid_irrs, 90)),
+            "Std_IRR": float(np.std(valid_irrs)),
+            "Median_Success_IRR": float(np.median(successful_valid_irrs)) if successful_valid_irrs else float("nan"),
+            "P10_Success_IRR": float(np.percentile(successful_valid_irrs, 10)) if successful_valid_irrs else float("nan"),
+            "P90_Success_IRR": float(np.percentile(successful_valid_irrs, 90)) if successful_valid_irrs else float("nan"),
             "Priors": {
                 "σ_growth": 0.03, 
                 "σ_margin": 0.015, 
                 "σ_multiple": 0.75
             },
-            "SuccessDef": "No ND/EBITDA or ICR breach and positive exit equity",
+            "SuccessDef": "No covenant breach, positive exit equity, and IRR ≥ 8%",
         }
     else:
         return {
-            "IRRs": [],
-            "Count": 0,
+            "Seed": seed,
+            "Scenarios": scenario_records,
+            "IRRs": unconditional_irrs,
+            "Successful_IRRs": successful_irrs,
+            "Count": n,
+            "Successful_Count": 0,
             "Breaches": breach_count,
+            "Insolvent": insolvent_count,
+            "Negative_Equity": negative_equity_count,
+            "Capital_Loss": capital_loss_count,
             "N": n,
             "Success_Rate": 0.0,
+            "Breach_Frequency": breach_count / n if n else 0.0,
+            "Insolvency_Frequency": insolvent_count / n if n else 0.0,
+            "Capital_Loss_Frequency": capital_loss_count / n if n else 0.0,
             "Median_IRR": float("nan"),
             "P10_IRR": float("nan"),
             "P90_IRR": float("nan"),
             "Std_IRR": float("nan"),
+            "Median_Success_IRR": float("nan"),
+            "P10_Success_IRR": float("nan"),
+            "P90_Success_IRR": float("nan"),
             "Priors": {
                 "σ_growth": 0.03, 
                 "σ_margin": 0.015, 
                 "σ_multiple": 0.75
             },
-            "SuccessDef": "No ND/EBITDA or ICR breach and positive exit equity",
+            "SuccessDef": "No covenant breach, positive exit equity, and IRR ≥ 8%",
         }
 
 
@@ -1289,20 +1453,21 @@ def create_enhanced_pdf_report(
     # Cover page
     pdf.add_page()
     pdf.set_font("Arial", "B", 20)
-    pdf.cell(0, 20, ascii_safe("Accor LBO Analysis"), ln=True, align="C")
+    pdf.cell(0, 20, ascii_safe("Accor LBO Analysis"), align="C", new_x=XPos.LMARGIN, new_y=YPos.NEXT)
     pdf.set_font("Arial", "B", 14)
     pdf.cell(
         0,
         10,
         ascii_safe("Enhanced Model with IFRS-16 & Covenant Tracking"),
-        ln=True,
         align="C",
+        new_x=XPos.LMARGIN,
+        new_y=YPos.NEXT,
     )
     pdf.ln(10)
 
     # Executive Summary
     pdf.set_font("Arial", "B", 14)
-    pdf.cell(0, 10, ascii_safe("Executive Summary"), ln=True)
+    pdf.cell(0, 10, ascii_safe("Executive Summary"), new_x=XPos.LMARGIN, new_y=YPos.NEXT)
     pdf.set_font("Arial", "", 11)
 
     irr = metrics.get("IRR", float("nan"))
@@ -1336,21 +1501,21 @@ def create_enhanced_pdf_report(
     for line in summary_text.strip().split("\n"):
         if line.strip():
             # Use simple cell instead of multi_cell to avoid formatting issues
-            pdf.cell(0, 6, ascii_safe(line.strip()[:100]), ln=True)
+            pdf.cell(0, 6, ascii_safe(line.strip()[:100]), new_x=XPos.LMARGIN, new_y=YPos.NEXT)
 
     # ✅ VP Requirement: Equity Cash Flow Vector (kills 90% of IC nitpicks)
     if equity_vector:
         pdf.ln(5)
         pdf.set_font("Arial", "B", 12)
-        pdf.cell(0, 8, ascii_safe("Equity Cash Flow Vector"), ln=True)
+        pdf.cell(0, 8, ascii_safe("Equity Cash Flow Vector"), new_x=XPos.LMARGIN, new_y=YPos.NEXT)
         pdf.set_font("Arial", "", 10)
-        pdf.cell(0, 6, ascii_safe(f"Vector: {equity_vector['vector_description']}"), ln=True)
-        pdf.cell(0, 6, ascii_safe(f"IRR computed from: {equity_vector['irr_computed_from']}"), ln=True)
+        pdf.cell(0, 6, ascii_safe(f"Vector: {equity_vector['vector_description']}"), new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+        pdf.cell(0, 6, ascii_safe(f"IRR computed from: {equity_vector['irr_computed_from']}"), new_x=XPos.LMARGIN, new_y=YPos.NEXT)
 
     # Charts page
     pdf.add_page()
     pdf.set_font("Arial", "B", 14)
-    pdf.cell(0, 10, ascii_safe("Analysis Charts"), ln=True)
+    pdf.cell(0, 10, ascii_safe("Analysis Charts"), new_x=XPos.LMARGIN, new_y=YPos.NEXT)
 
     # Add charts (2x2 layout)
     if os.path.exists(charts.get("covenant", "")):
@@ -1364,29 +1529,29 @@ def create_enhanced_pdf_report(
     if os.path.exists(charts.get("sources_uses", "")):
         pdf.add_page()
         pdf.set_font("Arial", "B", 14)
-        pdf.cell(0, 10, ascii_safe("Sources & Uses (Entry)"), ln=True)
+        pdf.cell(0, 10, ascii_safe("Sources & Uses (Entry)"), new_x=XPos.LMARGIN, new_y=YPos.NEXT)
         pdf.image(charts["sources_uses"], x=10, y=30, w=270)
 
     if os.path.exists(charts.get("exit_bridge", "")):
         pdf.add_page()
         pdf.set_font("Arial", "B", 14)
-        pdf.cell(0, 10, ascii_safe("Exit Equity Bridge"), ln=True)
+        pdf.cell(0, 10, ascii_safe("Exit Equity Bridge"), new_x=XPos.LMARGIN, new_y=YPos.NEXT)
         pdf.image(charts["exit_bridge"], x=10, y=30, w=270)
 
     if os.path.exists(charts.get("deleveraging", "")):
         pdf.add_page()
         pdf.set_font("Arial", "B", 14)
-        pdf.cell(0, 10, ascii_safe("Deleveraging Walk"), ln=True)
+        pdf.cell(0, 10, ascii_safe("Deleveraging Walk"), new_x=XPos.LMARGIN, new_y=YPos.NEXT)
         pdf.image(charts["deleveraging"], x=10, y=30, w=270)
 
     # Sensitivity table page
     pdf.add_page()
     pdf.set_font("Arial", "B", 14)
-    pdf.cell(0, 10, ascii_safe("Sensitivity Analysis"), ln=True)
+    pdf.cell(0, 10, ascii_safe("Sensitivity Analysis"), new_x=XPos.LMARGIN, new_y=YPos.NEXT)
 
     pdf.set_font("Arial", "", 10)
     sens_title = "IRR sensitivity to Exit Multiple and Terminal EBITDA Margin"
-    pdf.cell(0, 6, sens_title, ln=True)
+    pdf.cell(0, 6, sens_title, new_x=XPos.LMARGIN, new_y=YPos.NEXT)
     pdf.ln(5)
 
     # Simple sensitivity table
@@ -1409,7 +1574,7 @@ def create_enhanced_pdf_report(
     # Monte Carlo summary
     pdf.ln(10)
     pdf.set_font("Arial", "B", 12)
-    pdf.cell(0, 8, ascii_safe("Monte Carlo Results"), ln=True)
+    pdf.cell(0, 8, ascii_safe("Monte Carlo Results"), new_x=XPos.LMARGIN, new_y=YPos.NEXT)
     pdf.set_font("Arial", "", 10)
 
     if mc_results["Count"] > 0:
@@ -1423,7 +1588,7 @@ def create_enhanced_pdf_report(
         """
         for line in mc_summary.strip().split("\n"):
             if line.strip():
-                pdf.cell(0, 6, ascii_safe(line.strip()[:100]), ln=True)
+                pdf.cell(0, 6, ascii_safe(line.strip()[:100]), new_x=XPos.LMARGIN, new_y=YPos.NEXT)
 
     pdf.output(out_pdf)
 
@@ -1496,7 +1661,7 @@ def main():
     
     # Optional IRR validation (VP guardrail)
     try:
-        irr_from_vector = float(npf.irr(eq_vec))
+        irr_from_vector = irr(eq_vec)
         metrics["IRR_from_vector_check"] = irr_from_vector
         irr_diff = abs((irr_from_vector or 0) - (metrics.get("IRR", 0) or 0))
         if irr_diff > 1e-3:  # Allow small floating point differences
@@ -1716,7 +1881,8 @@ def build_equity_cf_vector(results: Dict, a: DealAssumptions) -> list[float]:
     
     # Annual equity cash flows
     for y in range(1, a.years + 1):
-        equity_cf = results[f"Year {y}"].get("Equity CF", 0.0)
+        year_data = results[f"Year {y}"]
+        equity_cf = year_data.get("Cash Distribution / Ending Cash", year_data.get("Equity CF", 0.0))
         vec.append(equity_cf)
     
     # Add exit proceeds to final year
@@ -1871,7 +2037,7 @@ def generate_equity_cashflow_vector(results: Dict, a: DealAssumptions, metrics: 
     # Read actual equity cash flows from each year
     for y in range(1, a.years + 1):
         yr_data = results.get(f"Year {y}", {})
-        equity_cf = yr_data.get("Equity CF", 0.0)
+        equity_cf = yr_data.get("Cash Distribution / Ending Cash", yr_data.get("Equity CF", 0.0))
         
         if y == a.years:
             # Final year: add exit proceeds to operating equity CF
