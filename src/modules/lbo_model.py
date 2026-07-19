@@ -79,6 +79,7 @@ class LBOModel:
         capex_schedule: Optional[List[float]] = None,
         da_schedule: Optional[List[float]] = None,
         wc_schedule: Optional[List[float]] = None,
+        ebitda_margin_end: Optional[float] = None,
     ):
         if senior_frac + mezz_frac > 1.0:
             raise ValueError("senior_frac + mezz_frac must ≤ 1.0")
@@ -88,6 +89,9 @@ class LBOModel:
         self.revenue0 = revenue
         self.rev_growth = rev_growth
         self.ebitda_margin = ebitda_margin
+        self.ebitda_margin_end = (
+            ebitda_margin_end if ebitda_margin_end is not None else ebitda_margin
+        )
         self.capex_pct = capex_pct
         self.wc_pct = wc_pct
         self.tax_rate = tax_rate
@@ -141,7 +145,16 @@ class LBOModel:
         for year in range(1, years + 1):
             if year > 1:
                 revenue *= 1 + self.rev_growth
-            ebitda = revenue * self.ebitda_margin
+
+            # Linear margin path allows start/end margin assumptions to flow.
+            if years > 1:
+                progress = (year - 1) / (years - 1)
+            else:
+                progress = 0.0
+            margin = self.ebitda_margin + (
+                self.ebitda_margin_end - self.ebitda_margin
+            ) * progress
+            ebitda = revenue * margin
 
             if self.capex_schedule and len(self.capex_schedule) >= year:
                 capex = self.capex_schedule[year - 1]
@@ -176,8 +189,9 @@ class LBOModel:
                         f"{self.ltv_hurdle:.1f}x)"
                     )
 
-            ebt = ebitda - total_interest
-            tax = ebt * self.tax_rate
+            ebit = ebitda - da
+            ebt = ebit - total_interest
+            tax = max(0.0, ebt) * self.tax_rate
             nopat = ebt - tax
 
             lcf = nopat + da - capex - wc_delta
@@ -204,22 +218,24 @@ class LBOModel:
                                 f"Year {year}: cannot meet amort on {t.name}"
                             )
 
-            sweep_left = lcf * self.cash_sweep_pct
+            sweep_base = max(0.0, remaining_cash) * self.cash_sweep_pct
+            sweep_left = sweep_base
             for t in self.debt_tranches:
                 if t.revolver:
                     pay = min(sweep_left, t.balance)
-                    t.balance -= pay
+                    t.balance = max(0.0, t.balance - pay)
                     sweep_left -= pay
                     if sweep_left <= 0:
                         break
             for t in self.debt_tranches:
                 if not t.revolver and not t.pik:
                     pay = min(sweep_left, t.balance)
-                    t.balance -= pay
+                    t.balance = max(0.0, t.balance - pay)
                     sweep_left -= pay
                     if sweep_left <= 0:
                         break
-            remaining_cash = lcf - (lcf * self.cash_sweep_pct - sweep_left)
+            debt_sweep_used = sweep_base - sweep_left
+            remaining_cash = remaining_cash - debt_sweep_used
 
             total_debt = sum(t.debt for t in self.debt_tranches)
             print(
@@ -231,6 +247,7 @@ class LBOModel:
             results[f"Year {year}"] = {
                 "Revenue": revenue,
                 "EBITDA": ebitda,
+                "EBIT": ebit,
                 "Interest": total_interest,
                 "Tax": tax,
                 "NOPAT": nopat,
@@ -251,8 +268,8 @@ class LBOModel:
         nd = sum(t.debt for t in self.debt_tranches)
         eqv = tv - nd
 
-        # FIX: Add exit equity value to IRR cashflow vector
-        irr_cf.append(eqv)
+        # Exit proceeds are realized in the final holding-year cash flow period.
+        irr_cf[-1] += eqv
 
         # FIX: Calculate IRR from complete equity cashflow vector
         irr = npf.irr(irr_cf)
