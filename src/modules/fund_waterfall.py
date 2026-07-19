@@ -143,7 +143,7 @@ def compute_waterfall_by_year(
     cumulative_lp_pref_paid = 0.0
 
     for year, (call, gross_distribution) in enumerate(
-        zip(calls, dists),
+        zip(calls, dists, strict=True),
         start=1,
     ):
         cumulative_calls += call

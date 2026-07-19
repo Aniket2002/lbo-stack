@@ -1,163 +1,164 @@
-# LBO Stack 💼
+# LBO Stack
 
-**Comprehensive LBO Model for Financial Analysis**
+An educational Python toolkit for annual LBO scenario analysis with explicit cash, debt, revolver, covenant and exit-equity reconciliation.
 
-A sophisticated Python-based LBO model featuring covenant tracking, sensitivity analysis, Monte Carlo simulation, and professional PDF reporting with organized output management.
+## Model scope
 
-## 🚀 Quick Start
+The repository includes:
 
-### Installation
+- transaction sources and uses;
+- senior, mezzanine, bullet, revolver and simplified IFRS-16 debt;
+- separate cash and PIK interest;
+- cash taxes with a simplified NOL roll-forward;
+- minimum-cash funding and revolver draws;
+- mandatory amortisation and optional cash sweeps;
+- cash and debt roll-forward checks;
+- net-debt leverage, cash-interest coverage and cash-flow coverage;
+- exit-equity and sponsor-return reconciliation;
+- operating and exit sensitivities;
+- unconditional Monte Carlo scenario statistics;
+- a single-tier European-style fund waterfall;
+- a Streamlit dashboard and PDF summary.
+
+## Installation
+
+```bash
+python -m venv .venv
+```
+
+Activate the environment, then install dependencies:
+
 ```bash
 pip install -r requirements.txt
 ```
 
-### Run the Model
+## Run the model
 
-**Command Line:**
+From the repository root:
+
 ```bash
-cd src/modules
-python orchestrator_advanced.py
+python -m src.modules.orchestrator_advanced
 ```
 
-**Interactive Web App:**
+Generated files are written to `output/`.
+
+## Run the dashboard
+
 ```bash
-streamlit run streamlit_app.py
+streamlit run src/modules/streamlit_app.py
 ```
 
-### Generated Outputs
-All analysis files are automatically saved to the runtime `output/` folder:
-- **PDF Report**: Comprehensive analysis document
-- **Charts**: Professional visualizations and analysis charts
-- **Console**: Detailed financial metrics and results
-- **Interactive App**: Real-time assumption testing and live covenant tracking
+## Run tests
 
-Reproducible examples and narrative walkthroughs live under `examples/`.
-
-## 📊 Model Features
-
-### Base Case Example
-The current example run is driven entirely by the assumptions in `data/accor_assumptions.csv` and the selected UI inputs.
-
-### Advanced Analytics
-- **Sensitivity Analysis**: IRR vs **Terminal EBITDA Margin (±400 bps)** and **Exit Multiple (±1.0×)**
-- **Monte Carlo**: configurable scenarios with priors and success rule sourced from the current run inputs
-- **Deterministic Stress**: Named downside with four outputs (IRR, trough ICR, max ND/EBITDA, Breach Y/N)
-- **Equity Cash-Flow Vector**: IRR computed from the exact equity vector printed in the PDF
-
-### Professional Outputs
-- Comprehensive PDF reports with executive summary
-- Professional chart generation (covenant tracking, exit bridge, deleveraging path)
-- Sources & Uses waterfall analysis
-- Exit equity bridge visualization
-- **Interactive Streamlit app** for real-time scenario analysis
-
-## 📁 Repository Structure
-
+```bash
+python -m pytest -q
 ```
+
+Run the same coverage gate used by CI:
+
+```bash
+python -m pytest -q \
+  --cov=src/modules \
+  --cov-report=term-missing \
+  --cov-fail-under=65
+```
+
+Run linting:
+
+```bash
+python -m ruff check src tests
+```
+
+## Core reconciliation formulas
+
+### Cash
+
+```text
+Closing cash
+= Opening cash
++ Operating cash generation
++ Operating revolver draw
+- Cash-funded mandatory amortisation
+- Optional cash sweep
+```
+
+Revolver-funded mandatory amortisation does not pass through ending cash: the draw increases revolver debt and immediately repays the target debt tranche.
+
+### Debt
+
+```text
+Closing debt
+= Opening debt
++ Revolver draws
++ PIK interest
+- Actual mandatory amortisation
+- Optional cash sweep
+```
+
+### Exit equity
+
+```text
+Exit equity
+= Exit enterprise value
+- Sale costs
+- Closing debt
++ Closing cash
+```
+
+### Initial sponsor investment
+
+The opening equity cash flow equals the sponsor-equity cheque from the canonical sources-and-uses schedule. Transaction fees, financing fees, OID and retained cash therefore enter sponsor returns directly.
+
+## Waterfall convention
+
+The current waterfall supports one European-style whole-fund tier with:
+
+1. pro-rata return of LP and GP contributed capital;
+2. compounded LP preferred return;
+3. 100% GP catch-up;
+4. residual LP/GP split;
+5. optional cashless carry deferral;
+6. end-of-life clawback check.
+
+Management fees are treated as separate investor cash outflows and are not deducted from portfolio distributions.
+
+Multi-tier waterfalls and hurdle resets deliberately raise `NotImplementedError` rather than presenting unsupported economics.
+
+## Limitations
+
+- The model is annual, not monthly or quarterly.
+- Tax, interest deductibility and NOL treatment are simplified.
+- The IFRS-16 module is assumption-driven and does not reproduce a full lease-accounting schedule.
+- Lease principal is modelled through an assumed amortisation period.
+- The included Accor inputs are illustrative reconstructed assumptions, not audited transaction data.
+- Monte Carlo priors are scenario assumptions, not empirically calibrated forecasts.
+- The fund waterfall is simplified and does not replace an LPA-specific legal model.
+- Multi-tier waterfalls are not supported.
+
+## Suggested project description
+
+> Developed a Python LBO scenario-analysis toolkit with multi-tranche debt, minimum-cash and revolver mechanics, covenant monitoring, operating sensitivities and Monte Carlo stress testing.
+
+## Repository structure
+
+```text
 lbo-stack/
-├── src/modules/
-│   ├── orchestrator_advanced.py         # Main LBO model
-│   ├── lbo_model.py                     # Core financial modeling
-│   └── fund_waterfall.py               # Fund economics and waterfall
+├── src/
+│   └── modules/
+│       ├── lbo_model.py
+│       ├── fund_waterfall.py
+│       ├── orchestrator_advanced.py
+│       └── streamlit_app.py
+├── tests/
+│   ├── test_invariants.py
+│   └── test_fund_waterfall.py
 ├── data/
-│   ├── accor_assumptions.csv           # Model assumptions
-│   └── accor_historical_recreated.csv  # Historical financial data
-├── examples/                           # Reproducible examples and walkthroughs
-├── output/                             # Runtime analysis outputs (gitignored)
-├── streamlit_app.py                    # Interactive web application
-├── requirements.txt                     # Python dependencies
-└── README.md                           # This documentation
+├── output/
+├── requirements.txt
+├── pyproject.toml
+└── README.md
 ```
 
-## 📊 Output Files Description
+## License
 
-### 📄 PDF Report
-Generate the report from the CLI or Streamlit app. The runtime PDF contains:
-- Executive summary with key metrics
-- Detailed equity cash flow vector analysis
-- Embedded charts and visualizations
-- Monte Carlo simulation summary
-- Sensitivity analysis results table
-
-### 📈 Chart Files
-
-#### Covenant headroom chart
-Visual tracking of covenant compliance throughout the investment period:
-- Net Debt/EBITDA ratio vs covenant threshold
-- Interest Coverage Ratio (ICR) vs minimum requirement
-- Color-coded compliance indicators
-
-#### Deleveraging path chart
-Debt reduction visualization showing:
-- Total debt outstanding over time
-- Annual debt paydown amounts
-- EBITDA growth trajectory
-- Net leverage ratio evolution
-
-#### Exit equity bridge chart
-Exit value waterfall chart displaying:
-- Enterprise value at exit
-- Less: Outstanding debt
-- Transaction costs and fees
-- Net proceeds to equity investors
-
-#### Monte Carlo chart
-Monte Carlo simulation results featuring:
-- IRR distribution histogram
-- Success rate analysis
-- P10/P50/P90 percentile markers
-- Risk assessment metrics
-
-#### Sensitivity heatmap
-Two-dimensional sensitivity analysis showing:
-- IRR sensitivity to **Terminal EBITDA Margin (±400 bps)** and **Exit Multiple (±1.0×)** assumptions
-- Color-coded heat map for visual impact assessment
-- Base case positioning within scenario range
-
-#### Sources and uses chart
-Sources and uses of funds at transaction entry:
-- Equity contribution breakdown
-- Debt facilities sizing
-- Transaction costs allocation
-- Total use of funds summary
-
-### 💻 Interactive Web App (`streamlit_app.py`)
-Professional Streamlit application featuring:
-- **Real-time assumption testing**: Adjust entry/exit multiples, leverage, covenants
-- **Live covenant monitoring**: Watch ICR and Net Debt/EBITDA move with assumptions
-- **Interactive Monte Carlo**: Configure scenarios (100/200/400) with reproducible seeds
-- **One-click PDF generation**: Produces the exact same report as CLI version
-- **Professional KPI dashboard**: IRR, MOIC, covenant status with visual indicators
-
-## 🔧 Customization
-
-Edit `data/accor_assumptions.csv` to modify:
-- Revenue growth assumptions
-- EBITDA margin projections  
-- Entry/exit multiples
-- Debt structure and pricing
-- Covenant levels (defaults: Net Debt/EBITDA ≤ 9.0×, ICR ≥ 2.2×)
-
-## 📈 Analysis Results Summary
-
-The dashboard and PDF now display the current run outputs only. Fixed sample metrics have been removed so the documentation stays synchronized with the model inputs.
-
-## ✅ Why this stands out to PE/IB recruiters
-- Lease-adjusted leverage and **explicit covenants** with headroom charts
-- **Sources & Uses**, **Exit Equity Bridge**, **Deleveraging Walk** embedded in the PDF
-- **Equity cash-flow vector** printed and reconciled to IRR
-- Reproducible: one command regenerates the exact PDF; RNG seed pinned
-- Unit tests for cash-flow reconciliation, waterfall allocation, and equity-vector consistency
-- **Interactive Streamlit app** for live scenario testing and covenant monitoring
-
-## 🏗️ Technical Details
-
-- **Python 3.11+** compatible
-- **Pandas/NumPy** for financial modeling
-- **Matplotlib** for professional charts with Agg backend
-- **FPDF2** for PDF generation
-- **Organized output management** with dedicated folder structure
-
-## 📄 License
-
-MIT License - See LICENSE file for details
+MIT
