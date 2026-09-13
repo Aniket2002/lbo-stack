@@ -616,10 +616,12 @@ def monte_carlo_analysis(
     assumptions = {**MONTE_CARLO_PRIORS_DEFAULT, **(priors or {})}
     rng = np.random.default_rng(seed)
     scenario_records = []
-    unconditional_irrs: list[float] = []
+    scenario_irrs: list[Optional[float]] = []
+    defined_irrs: list[float] = []
     successful_irrs: list[float] = []
     breach_count = 0
     insolvency_count = 0
+    failed_count = 0
     negative_equity_count = 0
     capital_loss_count = 0
 
@@ -649,13 +651,17 @@ def monte_carlo_analysis(
         error = projections.get("Error")
 
         if error:
-            irr_value = -1.0
-            equity_value = 0.0
+            irr_value = None
+            equity_value = None
             breached = "breach" in error.lower()
             insolvent = "cash" in error.lower() or "principal" in error.lower()
         else:
             raw_irr = metrics.get("IRR")
-            irr_value = -1.0 if raw_irr is None else float(raw_irr)
+            irr_value = (
+                float(raw_irr)
+                if raw_irr is not None and math.isfinite(float(raw_irr))
+                else None
+            )
             equity_value = float(metrics.get("Equity Value", 0.0))
             breached = bool(
                 metrics.get("ICR_Breach")
@@ -663,20 +669,27 @@ def monte_carlo_analysis(
             )
             insolvent = False
 
-        negative_equity = equity_value < 0
-        capital_loss = negative_equity or irr_value < 0
+        failed = bool(error)
+        negative_equity = equity_value is not None and equity_value < 0
+        capital_loss = negative_equity or (
+            irr_value is not None and irr_value < 0
+        )
         success = (
-            not breached
+            irr_value is not None
+            and not breached
             and not insolvent
             and not negative_equity
             and irr_value >= 0.08
         )
 
-        unconditional_irrs.append(irr_value)
+        scenario_irrs.append(irr_value)
+        if irr_value is not None:
+            defined_irrs.append(irr_value)
         if success:
             successful_irrs.append(irr_value)
         breach_count += int(breached)
         insolvency_count += int(insolvent)
+        failed_count += int(failed)
         negative_equity_count += int(negative_equity)
         capital_loss_count += int(capital_loss)
 
@@ -693,31 +706,73 @@ def monte_carlo_analysis(
                 "Insolvent": insolvent,
                 "Negative Equity": negative_equity,
                 "Capital Loss": capital_loss,
+                "Failed": failed,
                 "Successful": success,
                 "Error": error or "",
             }
         )
 
+    unconditional_irr_available = len(defined_irrs) == n
+    unconditional_median = (
+        float(np.median(defined_irrs))
+        if unconditional_irr_available
+        else math.nan
+    )
+    unconditional_p10 = (
+        float(np.percentile(defined_irrs, 10))
+        if unconditional_irr_available
+        else math.nan
+    )
+    unconditional_p90 = (
+        float(np.percentile(defined_irrs, 90))
+        if unconditional_irr_available
+        else math.nan
+    )
+    unconditional_std = (
+        float(np.std(defined_irrs))
+        if unconditional_irr_available
+        else math.nan
+    )
+
     return {
         "Seed": seed,
         "Scenarios": scenario_records,
-        "IRRs": unconditional_irrs,
+        "IRRs": scenario_irrs,
+        "Defined_IRRs": defined_irrs,
         "Successful_IRRs": successful_irrs,
         "Count": n,
         "N": n,
+        "Defined_IRR_Count": len(defined_irrs),
+        "Undefined_IRR_Count": n - len(defined_irrs),
         "Successful_Count": len(successful_irrs),
+        "Failed_Count": failed_count,
         "Breaches": breach_count,
         "Insolvent": insolvency_count,
         "Negative_Equity": negative_equity_count,
         "Capital_Loss": capital_loss_count,
         "Success_Rate": len(successful_irrs) / n,
+        "Failure_Rate": failed_count / n,
         "Breach_Frequency": breach_count / n,
         "Insolvency_Frequency": insolvency_count / n,
         "Capital_Loss_Frequency": capital_loss_count / n,
-        "Median_IRR": float(np.median(unconditional_irrs)),
-        "P10_IRR": float(np.percentile(unconditional_irrs, 10)),
-        "P90_IRR": float(np.percentile(unconditional_irrs, 90)),
-        "Std_IRR": float(np.std(unconditional_irrs)),
+        "Unconditional_IRR_Available": unconditional_irr_available,
+        "Median_IRR": unconditional_median,
+        "P10_IRR": unconditional_p10,
+        "P90_IRR": unconditional_p90,
+        "Std_IRR": unconditional_std,
+        "Median_Defined_IRR": (
+            float(np.median(defined_irrs)) if defined_irrs else math.nan
+        ),
+        "P10_Defined_IRR": (
+            float(np.percentile(defined_irrs, 10))
+            if defined_irrs
+            else math.nan
+        ),
+        "P90_Defined_IRR": (
+            float(np.percentile(defined_irrs, 90))
+            if defined_irrs
+            else math.nan
+        ),
         "Median_Success_IRR": (
             float(np.median(successful_irrs))
             if successful_irrs
@@ -731,6 +786,11 @@ def monte_carlo_analysis(
         "SuccessDef": (
             "No covenant breach or insolvency, positive exit equity, "
             "and IRR >= 8%"
+        ),
+        "IRRStatsDef": (
+            "Defined-path statistics include every scenario with a "
+            "mathematically defined IRR. Failed and undefined-return paths "
+            "are reported separately and are not assigned a synthetic IRR."
         ),
     }
 
@@ -768,10 +828,13 @@ def build_monte_carlo_footer(mc_results: Dict[str, Any]) -> Dict[str, Any]:  # p
     return {
         "priors_used": priors,
         "success_definition": mc_results["SuccessDef"],
+        "irr_statistics_definition": mc_results["IRRStatsDef"],
         "results_summary": {
             "median_irr": mc_results["Median_IRR"],
             "p10_irr": mc_results["P10_IRR"],
             "p90_irr": mc_results["P90_IRR"],
+            "median_defined_irr": mc_results["Median_Defined_IRR"],
+            "failure_rate": mc_results["Failure_Rate"],
             "success_rate": mc_results["Success_Rate"],
             "total_paths": mc_results["Count"],
         },
@@ -1024,12 +1087,15 @@ def plot_monte_carlo_results(  # pragma: no cover
     out_path: Optional[str] = None,
 ):
     fig, axis = plt.subplots(figsize=(9, 5))
-    axis.hist(mc_results["IRRs"], bins=30)
-    axis.axvline(mc_results["Median_IRR"], linestyle="--", label="Median")
-    axis.set_title("Unconditional Monte Carlo IRR Distribution")
+    axis.hist(mc_results["Defined_IRRs"], bins=30)
+    median = mc_results["Median_Defined_IRR"]
+    if math.isfinite(median):
+        axis.axvline(median, linestyle="--", label="Defined-path median")
+    axis.set_title("Monte Carlo IRR Distribution (Defined Paths)")
     axis.set_xlabel("IRR")
     axis.set_ylabel("Scenario count")
-    axis.legend()
+    if math.isfinite(median):
+        axis.legend()
     fig.tight_layout()
     if out_path:
         fig.savefig(out_path, dpi=200, bbox_inches="tight")

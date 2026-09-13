@@ -90,6 +90,12 @@ def compute_waterfall_by_year(
       unpaid accrued preferred return;
     - management fees are funded as separate investor outflows and are not
       deducted from gross portfolio distributions.
+
+    ``LP/GP Economic Distribution`` records the allocation of each period's
+    gross distribution before any later clawback transfer. ``LP/GP
+    Distributed`` records cash paid or received in the period, including a
+    final clawback. In cashless mode, allocated carry is held in a simplified
+    reserve and released to the GP in the final period.
     """
     if committed_capital <= 0:
         raise ValueError("committed_capital must be positive")
@@ -132,7 +138,6 @@ def compute_waterfall_by_year(
 
     cumulative_calls = 0.0
     cumulative_lp_paid_in = 0.0
-    cumulative_lp_distributions = 0.0
     cumulative_gp_carry_allocated = 0.0
     cumulative_gp_carry_paid = 0.0
 
@@ -227,6 +232,7 @@ def compute_waterfall_by_year(
         lp_distribution = lp_roc + pref_paid + residual_lp
         gp_economic_distribution = gp_roc + gp_carry_allocated
 
+        opening_deferred_gp_carry = deferred_gp_carry
         gp_carry_paid_this_year = 0.0
         gp_final_pay = 0.0
         if cashless:
@@ -239,8 +245,10 @@ def compute_waterfall_by_year(
             gp_carry_paid_this_year = gp_carry_allocated
 
         gp_cash_distribution = gp_roc + gp_carry_paid_this_year
+        gp_carry_reserve_change = (
+            deferred_gp_carry - opening_deferred_gp_carry
+        )
         cumulative_gp_carry_paid += gp_carry_paid_this_year
-        cumulative_lp_distributions += lp_distribution
 
         lp_period_cf = -lp_call - lp_fee + lp_distribution
         gp_period_cf = -gp_call - gp_fee + gp_cash_distribution
@@ -286,10 +294,18 @@ def compute_waterfall_by_year(
                 "GP Carry Allocated": gp_carry_allocated,
                 "GP Carry Paid": gp_carry_paid_this_year,
                 "GP Carry Deferred": deferred_gp_carry,
+                "GP Carry Reserve Change": gp_carry_reserve_change,
+                "GP Carry Reserve Release": gp_final_pay,
+                "LP Economic Distribution": lp_distribution,
                 "LP Distributed": lp_distribution,
                 "GP Distributed": gp_cash_distribution,
                 "GP Economic Distribution": gp_economic_distribution,
                 "GP Final Pay": gp_final_pay,
+                "Clawback Principal": 0.0,
+                "Clawback Interest": 0.0,
+                "Clawback": 0.0,
+                "LP Clawback Receipt": 0.0,
+                "GP Clawback Payment": 0.0,
                 "LP Cash Flow": lp_period_cf,
                 "GP Cash Flow": gp_period_cf,
                 "Fund Cash Flow": fund_period_cf,
@@ -298,6 +314,9 @@ def compute_waterfall_by_year(
                 ),
                 "Gross Distribution Delta": distribution_delta,
                 "LP + GP Reconciliation": (
+                    lp_distribution + gp_economic_distribution
+                ),
+                "LP + GP Economic Distributions": (
                     lp_distribution + gp_economic_distribution
                 ),
                 "LP Distributions + GP Distributions": (
@@ -319,7 +338,8 @@ def compute_waterfall_by_year(
                     }
                 ],
                 "Cumulative LP Paid In": cumulative_lp_paid_in,
-                "Cumulative LP Distributed": cumulative_lp_distributions,
+                "Cumulative LP Distributed": 0.0,
+                "Cumulative GP Cash Distributed": 0.0,
             }
         )
 
@@ -331,18 +351,59 @@ def compute_waterfall_by_year(
     )
 
     clawback = 0.0
+    clawback_interest_amount = 0.0
     if excess_carry > 1e-8:
         clawback = excess_carry
         if clawback_interest == "simple":
-            clawback *= 1.0 + hurdle * years
-        gp_cf[-1] -= clawback
-        lp_cf[-1] += clawback
+            clawback_interest_amount = excess_carry * hurdle * years
+            clawback += clawback_interest_amount
+        results[-1]["LP Distributed"] += clawback
+        results[-1]["GP Distributed"] -= clawback
+        results[-1]["LP Cash Flow"] += clawback
+        results[-1]["GP Cash Flow"] -= clawback
+        results[-1]["Clawback Principal"] = excess_carry
+        results[-1]["Clawback Interest"] = clawback_interest_amount
         results[-1]["Clawback"] = clawback
+        results[-1]["LP Clawback Receipt"] = clawback
+        results[-1]["GP Clawback Payment"] = clawback
         results[-1]["GP Net After Clawback"] = (
             cumulative_gp_carry_paid - clawback
         )
 
+    cumulative_lp_distributions = 0.0
+    cumulative_gp_cash_distributions = 0.0
+    cumulative_gp_carry_cash = 0.0
+    cumulative_clawback = 0.0
+    lp_cf = [row["LP Cash Flow"] for row in results]
+    gp_cf = [row["GP Cash Flow"] for row in results]
+    fund_cf = [row["Fund Cash Flow"] for row in results]
     for index, row in enumerate(results, start=1):
+        cumulative_lp_distributions += row["LP Distributed"]
+        cumulative_gp_cash_distributions += row["GP Distributed"]
+        cumulative_gp_carry_cash += row["GP Carry Paid"]
+        cumulative_clawback += row["Clawback"]
+        row["Cumulative LP Distributed"] = cumulative_lp_distributions
+        row["Cumulative GP Cash Distributed"] = (
+            cumulative_gp_cash_distributions
+        )
+        row["GP Net After Clawback"] = (
+            cumulative_gp_carry_cash - cumulative_clawback
+        )
+        cash_distribution_target = (
+            row["Gross Dist"] - row["GP Carry Reserve Change"]
+        )
+        row["Cash Distribution Reconciliation"] = (
+            row["LP Distributed"] + row["GP Distributed"]
+        )
+        row["Cash Distribution Delta"] = (
+            cash_distribution_target
+            - row["Cash Distribution Reconciliation"]
+        )
+        if abs(row["Cash Distribution Delta"]) > 1e-8:
+            raise AssertionError(
+                f"Year {index}: cash distribution failed to reconcile by "
+                f"{row['Cash Distribution Delta']:.10f}"
+            )
         row["LP IRR"] = irr(lp_cf[:index])
         row["GP IRR"] = irr(gp_cf[:index])
         row["Fund IRR"] = irr(fund_cf[:index])
@@ -385,12 +446,10 @@ def summarize_waterfall(
 
     last = waterfall[-1]
     return {
-        "Cumulative LP Distributed": sum(
-            row["LP Distributed"] for row in waterfall
-        ),
-        "Cumulative GP Cash Distributed": sum(
-            row["GP Distributed"] for row in waterfall
-        ),
+        "Cumulative LP Distributed": last["Cumulative LP Distributed"],
+        "Cumulative GP Cash Distributed": last[
+            "Cumulative GP Cash Distributed"
+        ],
         "Cumulative GP Carry Allocated": sum(
             row["GP Carry Allocated"] for row in waterfall
         ),
@@ -399,6 +458,8 @@ def summarize_waterfall(
         "Net IRR (GP)": last["GP IRR"],
         "Fund IRR": last["Fund IRR"],
         "MOIC": last["MOIC"],
-        "Clawback Triggered": "Clawback" in last,
-        "Clawback Amount": last.get("Clawback", 0.0),
+        "Clawback Triggered": last["Clawback"] > 1e-8,
+        "Clawback Amount": last["Clawback"],
+        "Clawback Principal": last["Clawback Principal"],
+        "Clawback Interest": last["Clawback Interest"],
     }

@@ -11,6 +11,7 @@ from src.modules.orchestrator_advanced import (
     monte_carlo_analysis,
     run_enhanced_base_case,
 )
+from src.modules import orchestrator_advanced
 
 
 def _small_model(**overrides):
@@ -250,13 +251,64 @@ def test_second_waterfall_tier_is_explicitly_unsupported():
         )
 
 
-def test_monte_carlo_includes_every_scenario_in_unconditional_distribution():
+def test_monte_carlo_reports_every_scenario_without_manufactured_failure_irr():
     results = monte_carlo_analysis(DealAssumptions(), n=20, seed=7)
 
     assert results["Count"] == 20
     assert len(results["Scenarios"]) == 20
-    assert len(results["IRRs"]) == 20
+    assert len(results["IRRs"]) == results["Count"]
+    assert len(results["Defined_IRRs"]) == results["Defined_IRR_Count"]
+    assert results["Failure_Rate"] == pytest.approx(
+        results["Failed_Count"] / results["Count"]
+    )
     assert results["Success_Rate"] == pytest.approx(
         results["Successful_Count"] / results["Count"]
     )
-    assert math.isfinite(results["Median_IRR"])
+    assert all(value > -1.0 for value in results["Defined_IRRs"])
+
+
+def test_monte_carlo_failure_has_no_arbitrary_minus_100_percent_irr(monkeypatch):
+    def failed_case(_assumptions):
+        return {"Error": "Year 1: operating cash deficit with no revolver"}, {
+            "IRR": math.nan,
+            "MOIC": math.nan,
+            "Equity Value": math.nan,
+        }
+
+    monkeypatch.setattr(
+        orchestrator_advanced,
+        "run_enhanced_base_case",
+        failed_case,
+    )
+    results = monte_carlo_analysis(DealAssumptions(), n=3, seed=7)
+
+    assert results["Failed_Count"] == 3
+    assert results["Insolvent"] == 3
+    assert results["Defined_IRRs"] == []
+    assert all(scenario["IRR"] is None for scenario in results["Scenarios"])
+    assert results["IRRs"] == [None, None, None]
+    assert math.isnan(results["Median_IRR"])
+    assert not results["Unconditional_IRR_Available"]
+
+
+def test_monte_carlo_defined_path_stats_include_underperformance(monkeypatch):
+    def underperforming_case(_assumptions):
+        return {"Exit Summary": {}}, {
+            "IRR": -0.20,
+            "MOIC": 0.50,
+            "Equity Value": 50.0,
+            "ICR_Breach": False,
+            "Leverage_Breach": False,
+        }
+
+    monkeypatch.setattr(
+        orchestrator_advanced,
+        "run_enhanced_base_case",
+        underperforming_case,
+    )
+    results = monte_carlo_analysis(DealAssumptions(), n=3, seed=7)
+
+    assert results["Defined_IRRs"] == pytest.approx([-0.20, -0.20, -0.20])
+    assert results["Successful_IRRs"] == []
+    assert results["Median_Defined_IRR"] == pytest.approx(-0.20)
+    assert results["Capital_Loss_Frequency"] == pytest.approx(1.0)

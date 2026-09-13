@@ -9,14 +9,14 @@ The repository includes:
 - transaction sources and uses;
 - senior, mezzanine, bullet, revolver and simplified IFRS-16 debt;
 - separate cash and PIK interest;
-- cash taxes with a simplified NOL roll-forward;
+- simplified cash taxes with an annual NOL roll-forward;
 - minimum-cash funding and revolver draws;
 - mandatory amortisation and optional cash sweeps;
 - cash and debt roll-forward checks;
 - net-debt leverage, cash-interest coverage and cash-flow coverage;
 - exit-equity and sponsor-return reconciliation;
 - operating and exit sensitivities;
-- unconditional Monte Carlo scenario statistics;
+- Monte Carlo defined-path return statistics and separate failure rates;
 - a single-tier European-style fund waterfall;
 - a Streamlit dashboard and PDF summary.
 
@@ -60,7 +60,7 @@ Run the same coverage gate used by CI:
 python -m pytest -q \
   --cov=src/modules \
   --cov-report=term-missing \
-  --cov-fail-under=65
+  --cov-fail-under=75
 ```
 
 Run linting:
@@ -122,13 +122,19 @@ The current waterfall supports one European-style whole-fund tier with:
 
 Management fees are treated as separate investor cash outflows and are not deducted from portfolio distributions.
 
+Economic distributions show how each year's gross portfolio distribution is allocated before any later clawback. Cash distributions and LP/GP cash flows include the final clawback transfer, so cumulative distributions, IRRs and LP MOIC use the same cash reporting. In cashless mode, carry is held in a simplified notional reserve and paid in the final model period; this is a timing convention, not a full escrow or carry-holdback mechanism. Optional clawback interest is simple interest on excess carry for the full model horizon.
+
 Multi-tier waterfalls and hurdle resets deliberately raise `NotImplementedError` rather than presenting unsupported economics.
+
+## Monte Carlo reporting
+
+Monte Carlo priors are uncalibrated scenario assumptions. IRR percentiles for defined paths include every completed scenario with a mathematically defined IRR, including underperforming paths. Model failures, insolvencies and undefined IRRs are reported separately and are not assigned an arbitrary `-100%` IRR. Unconditional IRR statistics are shown only when every simulated path has a defined IRR.
 
 ## Limitations
 
 - The model is annual, not monthly or quarterly.
-- Tax, interest deductibility and NOL treatment are simplified.
-- The IFRS-16 module is assumption-driven and does not reproduce a full lease-accounting schedule.
+- Cash tax, interest deductibility and NOL treatment are simplified annual assumptions; the model does not reproduce jurisdiction-specific tax rules.
+- The IFRS-16 treatment is assumption-driven and does not reproduce a complete lease-accounting engine or accounting disclosure schedule.
 - Lease principal is modelled through an assumed amortisation period.
 - The included Accor inputs are illustrative reconstructed assumptions, not audited transaction data.
 - Monte Carlo priors are scenario assumptions, not empirically calibrated forecasts.
