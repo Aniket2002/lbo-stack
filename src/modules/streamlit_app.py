@@ -300,12 +300,22 @@ with fourth_tab:
         plot_monte_carlo_results(mc_results),
         clear_figure=True,
     )
-    mc_columns = st.columns(4)
+    mc_columns = st.columns(5)
     mc_columns[0].metric("Success rate", f"{mc_results['Success_Rate']:.1%}")
-    mc_columns[1].metric("Median IRR", f"{mc_results['Median_IRR']:.1%}")
-    mc_columns[2].metric("P10 IRR", f"{mc_results['P10_IRR']:.1%}")
-    mc_columns[3].metric("P90 IRR", f"{mc_results['P90_IRR']:.1%}")
-    st.caption(mc_results["SuccessDef"])
+    mc_columns[1].metric("Failure rate", f"{mc_results['Failure_Rate']:.1%}")
+    mc_columns[2].metric(
+        "Defined-path median",
+        f"{mc_results['Median_Defined_IRR']:.1%}",
+    )
+    mc_columns[3].metric(
+        "Defined-path P10",
+        f"{mc_results['P10_Defined_IRR']:.1%}",
+    )
+    mc_columns[4].metric(
+        "Defined-path P90",
+        f"{mc_results['P90_Defined_IRR']:.1%}",
+    )
+    st.caption(f"{mc_results['SuccessDef']} {mc_results['IRRStatsDef']}")
 
 analysis_for_pdf = {
     "metrics": metrics,
