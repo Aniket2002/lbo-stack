@@ -35,9 +35,7 @@ def _irr_fallback(cashflows: List[float]) -> float:
             denominator = (1.0 + rate) ** period
             npv += cashflow / denominator
             if period:
-                derivative -= (
-                    period * cashflow / (1.0 + rate) ** (period + 1)
-                )
+                derivative -= period * cashflow / (1.0 + rate) ** (period + 1)
 
         if abs(npv) < 1e-10:
             return rate
@@ -56,11 +54,7 @@ def _irr_fallback(cashflows: List[float]) -> float:
 
 def calculate_irr(cashflows: List[float]) -> Optional[float]:
     try:
-        value = (
-            float(npf.irr(cashflows))
-            if npf is not None
-            else _irr_fallback(cashflows)
-        )
+        value = float(npf.irr(cashflows)) if npf is not None else _irr_fallback(cashflows)
     except (ValueError, TypeError, OverflowError, FloatingPointError):
         return None
 
@@ -196,9 +190,7 @@ class LBOModel:
         bullet_amount = total_financial_debt - senior_amount - mezz_amount
 
         fallback_equity = self.enterprise_value - total_financial_debt
-        self.equity = float(
-            fallback_equity if initial_equity is None else initial_equity
-        )
+        self.equity = float(fallback_equity if initial_equity is None else initial_equity)
         if self.equity <= 0:
             raise ValueError("initial equity must be positive")
 
@@ -302,9 +294,9 @@ class LBOModel:
                 margin = self.ebitda_margin_schedule[year - 1]
             elif horizon > 1:
                 progress = (year - 1) / (horizon - 1)
-                margin = self.ebitda_margin + (
-                    self.ebitda_margin_end - self.ebitda_margin
-                ) * progress
+                margin = (
+                    self.ebitda_margin + (self.ebitda_margin_end - self.ebitda_margin) * progress
+                )
             else:
                 margin = self.ebitda_margin_end
 
@@ -324,17 +316,13 @@ class LBOModel:
                 working_capital_change = self.wc_schedule[year - 1]
             else:
                 current_working_capital = revenue * self.wc_pct
-                working_capital_change = (
-                    current_working_capital - previous_working_capital
-                )
+                working_capital_change = current_working_capital - previous_working_capital
                 previous_working_capital = current_working_capital
 
             cash_interest = 0.0
             pik_interest = 0.0
             for tranche in self.debt_tranches:
-                tranche_cash_interest, tranche_pik_interest = (
-                    tranche.accrue_interest()
-                )
+                tranche_cash_interest, tranche_pik_interest = tranche.accrue_interest()
                 cash_interest += tranche_cash_interest
                 pik_interest += tranche_pik_interest
             total_interest = cash_interest + pik_interest
@@ -342,15 +330,11 @@ class LBOModel:
             icr = math.inf if cash_interest <= 1e-12 else ebitda / cash_interest
             if self.icr_hurdle is not None and icr < self.icr_hurdle:
                 raise CovenantBreachError(
-                    f"Year {year}: ICR breach ({icr:.2f}x < "
-                    f"{self.icr_hurdle:.2f}x)"
+                    f"Year {year}: ICR breach ({icr:.2f}x < {self.icr_hurdle:.2f}x)"
                 )
 
             if self.ltv_hurdle is not None and ebitda > 0:
-                gross_leverage = (
-                    sum(tranche.balance for tranche in self.debt_tranches)
-                    / ebitda
-                )
+                gross_leverage = sum(tranche.balance for tranche in self.debt_tranches) / ebitda
                 if gross_leverage > self.ltv_hurdle:
                     raise CovenantBreachError(
                         f"Year {year}: leverage breach "
@@ -367,11 +351,7 @@ class LBOModel:
             net_income = ebt - cash_tax
 
             operating_cash_generation = (
-                ebitda
-                - cash_interest
-                - cash_tax
-                - capex
-                - working_capital_change
+                ebitda - cash_interest - cash_tax - capex - working_capital_change
             )
             cash_before_financing = opening_cash + operating_cash_generation
 
@@ -379,15 +359,12 @@ class LBOModel:
             operating_deficit = max(0.0, self.min_cash - cash_before_financing)
             if operating_deficit > 1e-8:
                 if revolver is None:
-                    raise InsolvencyError(
-                        f"Year {year}: operating cash deficit with no revolver"
-                    )
+                    raise InsolvencyError(f"Year {year}: operating cash deficit with no revolver")
                 operating_revolver_draw = revolver.draw(operating_deficit)
                 cash_before_financing += operating_revolver_draw
                 if cash_before_financing < self.min_cash - 1e-8:
                     raise InsolvencyError(
-                        f"Year {year}: revolver insufficient to maintain "
-                        "minimum cash"
+                        f"Year {year}: revolver insufficient to maintain minimum cash"
                     )
 
             cash_before_debt_service = cash_before_financing
@@ -428,29 +405,19 @@ class LBOModel:
             payment_default = unpaid_principal > 1e-8
             if payment_default:
                 raise InsolvencyError(
-                    f"Year {year}: unpaid mandatory principal of "
-                    f"{unpaid_principal:.2f}"
+                    f"Year {year}: unpaid mandatory principal of {unpaid_principal:.2f}"
                 )
 
-            sweep_budget = (
-                max(0.0, cash_before_financing - self.min_cash)
-                * self.cash_sweep_pct
-            )
+            sweep_budget = max(0.0, cash_before_financing - self.min_cash) * self.cash_sweep_pct
             sweep_remaining = sweep_budget
             optional_cash_sweep = 0.0
 
             sweep_priority = [
-                tranche
-                for tranche in self.debt_tranches
-                if tranche.revolver and tranche.sweepable
+                tranche for tranche in self.debt_tranches if tranche.revolver and tranche.sweepable
             ] + [
                 tranche
                 for tranche in self.debt_tranches
-                if (
-                    not tranche.revolver
-                    and not tranche.pik
-                    and tranche.sweepable
-                )
+                if (not tranche.revolver and not tranche.pik and tranche.sweepable)
             ]
 
             for tranche in sweep_priority:
@@ -463,31 +430,19 @@ class LBOModel:
 
             ending_cash = cash_before_financing - optional_cash_sweep
             if ending_cash < self.min_cash - 1e-8:
-                raise AssertionError(
-                    f"Year {year}: ending cash fell below minimum cash"
-                )
+                raise AssertionError(f"Year {year}: ending cash fell below minimum cash")
 
-            total_revolver_draws = (
-                operating_revolver_draw + revolver_funded_amortisation
-            )
+            total_revolver_draws = operating_revolver_draw + revolver_funded_amortisation
             debt_repayments = actual_amortisation + optional_cash_sweep
-            closing_debt = sum(
-                tranche.balance for tranche in self.debt_tranches
-            )
+            closing_debt = sum(tranche.balance for tranche in self.debt_tranches)
 
             debt_roll_forward_formula = (
-                opening_debt
-                + total_revolver_draws
-                + pik_interest
-                - debt_repayments
+                opening_debt + total_revolver_draws + pik_interest - debt_repayments
             )
-            debt_roll_forward_delta = (
-                debt_roll_forward_formula - closing_debt
-            )
+            debt_roll_forward_delta = debt_roll_forward_formula - closing_debt
             if abs(debt_roll_forward_delta) > 1e-8:
                 raise AssertionError(
-                    f"Year {year}: debt roll-forward failed by "
-                    f"{debt_roll_forward_delta:.10f}"
+                    f"Year {year}: debt roll-forward failed by {debt_roll_forward_delta:.10f}"
                 )
 
             cash_roll_forward_formula = (
@@ -500,8 +455,7 @@ class LBOModel:
             cash_roll_forward_delta = cash_roll_forward_formula - ending_cash
             if abs(cash_roll_forward_delta) > 1e-8:
                 raise AssertionError(
-                    f"Year {year}: cash roll-forward failed by "
-                    f"{cash_roll_forward_delta:.10f}"
+                    f"Year {year}: cash roll-forward failed by {cash_roll_forward_delta:.10f}"
                 )
 
             equity_distribution = 0.0
@@ -539,9 +493,7 @@ class LBOModel:
                 "Cash Before Debt Service": cash_before_debt_service,
                 "Scheduled Amortization": scheduled_amortisation,
                 "Cash-Funded Amortization": cash_funded_amortisation,
-                "Revolver-Funded Amortization": (
-                    revolver_funded_amortisation
-                ),
+                "Revolver-Funded Amortization": (revolver_funded_amortisation),
                 "Actual Amortization": actual_amortisation,
                 "Amortization": actual_amortisation,
                 "Unpaid Principal": unpaid_principal,
@@ -571,9 +523,7 @@ class LBOModel:
         sale_costs = exit_enterprise_value * self.sale_cost_pct
         final_debt = final_year["Closing Debt"]
         final_cash = final_year["Ending Cash"]
-        exit_equity = (
-            exit_enterprise_value - sale_costs - final_debt + final_cash
-        )
+        exit_equity = exit_enterprise_value - sale_costs - final_debt + final_cash
 
         equity_cashflows[-1] += exit_equity
         irr = calculate_irr(equity_cashflows)

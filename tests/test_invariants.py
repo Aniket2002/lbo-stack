@@ -43,9 +43,7 @@ def _small_model(**overrides):
 def test_sources_equal_uses():
     schedule = build_canonical_sources_and_uses(DealAssumptions())
     assert schedule["sources_equals_uses"]
-    assert schedule["sources"]["Total Sources"] == pytest.approx(
-        schedule["uses"]["Total Uses"]
-    )
+    assert schedule["sources"]["Total Sources"] == pytest.approx(schedule["uses"]["Total Uses"])
 
 
 def test_base_case_debt_and_cash_roll_forwards_reconcile():
@@ -59,10 +57,7 @@ def test_base_case_debt_and_cash_roll_forwards_reconcile():
     for year in range(1, assumptions.years + 1):
         row = results[f"Year {year}"]
         assert (
-            row["Opening Debt"]
-            + row["Debt Draws"]
-            + row["PIK Interest"]
-            - row["Debt Repayments"]
+            row["Opening Debt"] + row["Debt Draws"] + row["PIK Interest"] - row["Debt Repayments"]
         ) == pytest.approx(row["Closing Debt"])
         assert (
             row["Opening Cash"]
@@ -75,16 +70,12 @@ def test_base_case_debt_and_cash_roll_forwards_reconcile():
 
 def test_revolver_funded_amortisation_reduces_target_debt():
     model = _small_model()
-    senior = next(
-        tranche for tranche in model.debt_tranches if tranche.name == "Senior"
-    )
+    senior = next(tranche for tranche in model.debt_tranches if tranche.name == "Senior")
     senior.amort_schedule = [30.0]
 
     results = model.run(years=1)
     row = results["Year 1"]
-    revolver = next(
-        tranche for tranche in model.debt_tranches if tranche.revolver
-    )
+    revolver = next(tranche for tranche in model.debt_tranches if tranche.revolver)
 
     assert row["Scheduled Amortization"] == pytest.approx(30.0)
     assert row["Cash-Funded Amortization"] == pytest.approx(10.0)
@@ -113,9 +104,7 @@ def test_operating_deficit_without_revolver_raises():
 
 def test_insufficient_revolver_for_mandatory_principal_raises():
     model = _small_model(revolver_limit=5.0)
-    senior = next(
-        tranche for tranche in model.debt_tranches if tranche.name == "Senior"
-    )
+    senior = next(tranche for tranche in model.debt_tranches if tranche.name == "Senior")
     senior.amort_schedule = [30.0]
 
     with pytest.raises(InsolvencyError, match="unpaid mandatory principal"):
@@ -132,9 +121,7 @@ def test_cash_is_not_distributed_and_retained_at_the_same_time():
     results = model.run(years=2)
 
     assert results["Year 1"]["Equity CF"] == 0.0
-    assert results["Year 2"]["Opening Cash"] == pytest.approx(
-        results["Year 1"]["Ending Cash"]
-    )
+    assert results["Year 2"]["Opening Cash"] == pytest.approx(results["Year 1"]["Ending Cash"])
 
 
 def test_exit_equity_includes_retained_cash():
@@ -150,10 +137,7 @@ def test_exit_equity_includes_retained_cash():
     summary = results["Exit Summary"]
 
     expected = (
-        row["EBITDA"] * 5.0
-        - row["EBITDA"] * 5.0 * 0.01
-        - row["Closing Debt"]
-        + row["Ending Cash"]
+        row["EBITDA"] * 5.0 - row["EBITDA"] * 5.0 * 0.01 - row["Closing Debt"] + row["Ending Cash"]
     )
     assert summary["Equity Value"] == pytest.approx(expected)
 
@@ -172,14 +156,9 @@ def test_exit_bridge_reconciles_to_model_metrics():
     results, metrics = run_enhanced_base_case(assumptions)
     bridge = build_exit_equity_bridge(results, metrics, assumptions)
 
-    assert bridge["exit_equity_value"] == pytest.approx(
-        metrics["Equity Value"]
-    )
+    assert bridge["exit_equity_value"] == pytest.approx(metrics["Equity Value"])
     assert (
-        bridge["exit_ev"]
-        - bridge["sale_costs"]
-        - bridge["final_debt"]
-        + bridge["final_cash"]
+        bridge["exit_ev"] - bridge["sale_costs"] - bridge["final_debt"] + bridge["final_cash"]
     ) == pytest.approx(bridge["exit_equity_value"])
 
 
@@ -258,12 +237,8 @@ def test_monte_carlo_reports_every_scenario_without_manufactured_failure_irr():
     assert len(results["Scenarios"]) == 20
     assert len(results["IRRs"]) == results["Count"]
     assert len(results["Defined_IRRs"]) == results["Defined_IRR_Count"]
-    assert results["Failure_Rate"] == pytest.approx(
-        results["Failed_Count"] / results["Count"]
-    )
-    assert results["Success_Rate"] == pytest.approx(
-        results["Successful_Count"] / results["Count"]
-    )
+    assert results["Failure_Rate"] == pytest.approx(results["Failed_Count"] / results["Count"])
+    assert results["Success_Rate"] == pytest.approx(results["Successful_Count"] / results["Count"])
     assert all(value > -1.0 for value in results["Defined_IRRs"])
 
 

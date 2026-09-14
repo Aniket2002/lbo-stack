@@ -19,9 +19,7 @@ def test_distributions_reconcile_economically_each_year():
     )
 
     for row in waterfall:
-        assert row["Gross Distribution Reconciliation"] == pytest.approx(
-            row["Gross Dist"]
-        )
+        assert row["Gross Distribution Reconciliation"] == pytest.approx(row["Gross Dist"])
         assert row["Gross Distribution Delta"] == pytest.approx(0.0)
 
 
@@ -66,9 +64,7 @@ def test_no_clawback_row_and_summary_cash_reporting_reconcile():
     assert final["GP Cash Flow"] == pytest.approx(
         -final["GP Called"] - final["GP Fee"] + final["GP Distributed"]
     )
-    assert summary["Cumulative LP Distributed"] == pytest.approx(
-        final["Cumulative LP Distributed"]
-    )
+    assert summary["Cumulative LP Distributed"] == pytest.approx(final["Cumulative LP Distributed"])
     assert summary["Cumulative GP Cash Distributed"] == pytest.approx(
         final["Cumulative GP Cash Distributed"]
     )
@@ -103,9 +99,7 @@ def test_clawback_updates_final_row_cash_distributions_and_returns():
     assert final["Cumulative GP Cash Distributed"] == pytest.approx(
         sum(row["GP Distributed"] for row in waterfall)
     )
-    assert summary["Cumulative LP Distributed"] == pytest.approx(
-        final["Cumulative LP Distributed"]
-    )
+    assert summary["Cumulative LP Distributed"] == pytest.approx(final["Cumulative LP Distributed"])
     assert summary["Cumulative GP Cash Distributed"] == pytest.approx(
         final["Cumulative GP Cash Distributed"]
     )
@@ -114,15 +108,9 @@ def test_clawback_updates_final_row_cash_distributions_and_returns():
     assert summary["Net IRR (GP)"] == pytest.approx(final["GP IRR"])
     assert summary["Fund IRR"] == pytest.approx(final["Fund IRR"])
     assert summary["MOIC"] == pytest.approx(final["MOIC"])
-    assert final["LP IRR"] == pytest.approx(
-        irr([row["LP Cash Flow"] for row in waterfall])
-    )
-    assert final["GP IRR"] == pytest.approx(
-        irr([row["GP Cash Flow"] for row in waterfall])
-    )
-    assert final["Fund IRR"] == pytest.approx(
-        irr([row["Fund Cash Flow"] for row in waterfall])
-    )
+    assert final["LP IRR"] == pytest.approx(irr([row["LP Cash Flow"] for row in waterfall]))
+    assert final["GP IRR"] == pytest.approx(irr([row["GP Cash Flow"] for row in waterfall]))
+    assert final["Fund IRR"] == pytest.approx(irr([row["Fund Cash Flow"] for row in waterfall]))
     assert final["MOIC"] == pytest.approx(
         final["Cumulative LP Distributed"] / final["Cumulative LP Paid In"]
     )
@@ -148,14 +136,12 @@ def test_simple_interest_clawback_is_an_explicit_cash_transfer():
     )
     final = with_interest[-1]
 
-    assert final["Clawback"] == pytest.approx(
-        no_interest[-1]["Clawback"] * (1.0 + 0.08 * 2)
-    )
+    assert final["Clawback"] == pytest.approx(no_interest[-1]["Clawback"] * (1.0 + 0.08 * 2))
     assert final["LP Clawback Receipt"] == pytest.approx(final["Clawback"])
     assert final["GP Clawback Payment"] == pytest.approx(final["Clawback"])
-    assert sum(row["LP Distributed"] + row["GP Distributed"] for row in with_interest) == pytest.approx(
-        sum(row["Gross Dist"] for row in with_interest)
-    )
+    assert sum(
+        row["LP Distributed"] + row["GP Distributed"] for row in with_interest
+    ) == pytest.approx(sum(row["Gross Dist"] for row in with_interest))
 
 
 def test_waterfall_components_and_economic_distributions_reconcile():
@@ -176,14 +162,10 @@ def test_waterfall_components_and_economic_distributions_reconcile():
     assert row["Residual LP"] > 0.0
     assert row["Residual GP"] > 0.0
     assert row["LP Economic Distribution"] == pytest.approx(
-        row["LP Return of Capital"]
-        + row["Preferred Return Paid"]
-        + row["Residual LP"]
+        row["LP Return of Capital"] + row["Preferred Return Paid"] + row["Residual LP"]
     )
     assert row["GP Economic Distribution"] == pytest.approx(
-        row["GP Return of Capital"]
-        + row["Catch-up Paid"]
-        + row["Residual GP"]
+        row["GP Return of Capital"] + row["Catch-up Paid"] + row["Residual GP"]
     )
     assert row["LP Economic Distribution"] + row["GP Economic Distribution"] == pytest.approx(
         row["Gross Dist"]
@@ -203,9 +185,7 @@ def test_cashless_carry_reserve_and_final_release_reconcile():
 
     assert waterfall[0]["GP Carry Deferred"] > 0.0
     assert waterfall[0]["GP Distributed"] == pytest.approx(0.0)
-    assert waterfall[-1]["GP Carry Reserve Release"] == pytest.approx(
-        waterfall[-1]["GP Final Pay"]
-    )
+    assert waterfall[-1]["GP Carry Reserve Release"] == pytest.approx(waterfall[-1]["GP Final Pay"])
     assert waterfall[-1]["GP Carry Deferred"] == pytest.approx(0.0)
     for row in waterfall:
         assert row["LP Distributed"] + row["GP Distributed"] == pytest.approx(

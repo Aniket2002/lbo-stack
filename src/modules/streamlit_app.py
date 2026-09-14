@@ -253,9 +253,7 @@ with first_tab:
             {
                 "sources": sources_and_uses["sources"],
                 "uses": sources_and_uses["uses"],
-                "sources_equal_uses": sources_and_uses[
-                    "sources_equals_uses"
-                ],
+                "sources_equal_uses": sources_and_uses["sources_equals_uses"],
             }
         )
     with right:
@@ -279,12 +277,8 @@ with second_tab:
             "ICR breach": metrics["ICR_Breach"],
             "Leverage breach": metrics["Leverage_Breach"],
             "FCF coverage breach": metrics["FCF_Breach"],
-            "Debt reconciliation delta": metrics[
-                "Debt_Roll_Forward_Max_Delta"
-            ],
-            "Cash reconciliation delta": metrics[
-                "Cash_Roll_Forward_Max_Delta"
-            ],
+            "Debt reconciliation delta": metrics["Debt_Roll_Forward_Max_Delta"],
+            "Cash reconciliation delta": metrics["Cash_Roll_Forward_Max_Delta"],
         }
     )
 

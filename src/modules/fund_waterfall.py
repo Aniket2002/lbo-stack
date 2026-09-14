@@ -27,9 +27,7 @@ def _irr_fallback(cashflows: List[float]) -> float:
         for period, cashflow in enumerate(cashflows):
             npv += cashflow / (1.0 + rate) ** period
             if period:
-                derivative -= (
-                    period * cashflow / (1.0 + rate) ** (period + 1)
-                )
+                derivative -= period * cashflow / (1.0 + rate) ** (period + 1)
 
         if abs(npv) < 1e-10:
             return rate
@@ -48,11 +46,7 @@ def _irr_fallback(cashflows: List[float]) -> float:
 
 def irr(cashflows: List[float]) -> float:
     try:
-        value = (
-            float(npf.irr(cashflows))
-            if npf is not None
-            else _irr_fallback(cashflows)
-        )
+        value = float(npf.irr(cashflows)) if npf is not None else _irr_fallback(cashflows)
     except (ValueError, TypeError, OverflowError, FloatingPointError):
         return float("nan")
     return value if math.isfinite(value) else float("nan")
@@ -112,9 +106,7 @@ def compute_waterfall_by_year(
 
     waterfall_tiers = tiers or [{"hurdle": 0.08, "carry": 0.20}]
     if len(waterfall_tiers) != 1:
-        raise NotImplementedError(
-            "Only a single European waterfall tier is currently supported"
-        )
+        raise NotImplementedError("Only a single European waterfall tier is currently supported")
 
     tier = _normalise_tier(waterfall_tiers[0])
     hurdle = tier["hurdle"]
@@ -157,11 +149,7 @@ def compute_waterfall_by_year(
         unreturned_lp_capital += lp_call
         unreturned_gp_capital += gp_call
 
-        fee_base = (
-            committed_capital
-            if mgmt_fee_basis == "committed"
-            else cumulative_calls
-        )
+        fee_base = committed_capital if mgmt_fee_basis == "committed" else cumulative_calls
         management_fee = fee_base * mgmt_fee_pct
         lp_fee = management_fee * lp_pct
         gp_fee = management_fee * gp_pct
@@ -171,25 +159,18 @@ def compute_waterfall_by_year(
         # Calls are assumed to occur at the start of the period. The LP earns
         # one annual preferred return on the current unreturned capital, while
         # any unpaid prior preferred return compounds at the same rate.
-        pref_available = (
-            accrued_lp_pref * (1.0 + hurdle)
-            + unreturned_lp_capital * hurdle
-        )
+        pref_available = accrued_lp_pref * (1.0 + hurdle) + unreturned_lp_capital * hurdle
 
         remaining = gross_distribution
         opening_unreturned_lp = unreturned_lp_capital
         opening_unreturned_gp = unreturned_gp_capital
 
         # Return LP and GP contributed capital pro rata.
-        total_unreturned_capital = (
-            unreturned_lp_capital + unreturned_gp_capital
-        )
+        total_unreturned_capital = unreturned_lp_capital + unreturned_gp_capital
         capital_return_pool = min(remaining, total_unreturned_capital)
 
         if total_unreturned_capital > 1e-12:
-            lp_roc = capital_return_pool * (
-                unreturned_lp_capital / total_unreturned_capital
-            )
+            lp_roc = capital_return_pool * (unreturned_lp_capital / total_unreturned_capital)
         else:
             lp_roc = 0.0
         gp_roc = capital_return_pool - lp_roc
@@ -212,9 +193,7 @@ def compute_waterfall_by_year(
 
         # A 100% GP catch-up brings cumulative GP carry to the contractual
         # share of the LP preferred return before the residual split begins.
-        catch_up_target = (
-            cumulative_lp_pref_paid * carry / max(1e-12, 1.0 - carry)
-        )
+        catch_up_target = cumulative_lp_pref_paid * carry / max(1e-12, 1.0 - carry)
         catch_up_needed = max(
             0.0,
             catch_up_target - cumulative_gp_carry_allocated,
@@ -245,9 +224,7 @@ def compute_waterfall_by_year(
             gp_carry_paid_this_year = gp_carry_allocated
 
         gp_cash_distribution = gp_roc + gp_carry_paid_this_year
-        gp_carry_reserve_change = (
-            deferred_gp_carry - opening_deferred_gp_carry
-        )
+        gp_carry_reserve_change = deferred_gp_carry - opening_deferred_gp_carry
         cumulative_gp_carry_paid += gp_carry_paid_this_year
 
         lp_period_cf = -lp_call - lp_fee + lp_distribution
@@ -258,15 +235,10 @@ def compute_waterfall_by_year(
         gp_cf.append(gp_period_cf)
         fund_cf.append(fund_period_cf)
 
-        distribution_delta = (
-            gross_distribution
-            - lp_distribution
-            - gp_economic_distribution
-        )
+        distribution_delta = gross_distribution - lp_distribution - gp_economic_distribution
         if abs(distribution_delta) > 1e-8:
             raise AssertionError(
-                f"Year {year}: gross distribution failed to reconcile by "
-                f"{distribution_delta:.10f}"
+                f"Year {year}: gross distribution failed to reconcile by {distribution_delta:.10f}"
             )
 
         results.append(
@@ -309,19 +281,11 @@ def compute_waterfall_by_year(
                 "LP Cash Flow": lp_period_cf,
                 "GP Cash Flow": gp_period_cf,
                 "Fund Cash Flow": fund_period_cf,
-                "Gross Distribution Reconciliation": (
-                    lp_distribution + gp_economic_distribution
-                ),
+                "Gross Distribution Reconciliation": (lp_distribution + gp_economic_distribution),
                 "Gross Distribution Delta": distribution_delta,
-                "LP + GP Reconciliation": (
-                    lp_distribution + gp_economic_distribution
-                ),
-                "LP + GP Economic Distributions": (
-                    lp_distribution + gp_economic_distribution
-                ),
-                "LP Distributions + GP Distributions": (
-                    lp_distribution + gp_economic_distribution
-                ),
+                "LP + GP Reconciliation": (lp_distribution + gp_economic_distribution),
+                "LP + GP Economic Distributions": (lp_distribution + gp_economic_distribution),
+                "LP Distributions + GP Distributions": (lp_distribution + gp_economic_distribution),
                 "Closing Unreturned LP Capital": unreturned_lp_capital,
                 "Closing Unreturned GP Capital": unreturned_gp_capital,
                 "Tier Detail": [
@@ -366,9 +330,7 @@ def compute_waterfall_by_year(
         results[-1]["Clawback"] = clawback
         results[-1]["LP Clawback Receipt"] = clawback
         results[-1]["GP Clawback Payment"] = clawback
-        results[-1]["GP Net After Clawback"] = (
-            cumulative_gp_carry_paid - clawback
-        )
+        results[-1]["GP Net After Clawback"] = cumulative_gp_carry_paid - clawback
 
     cumulative_lp_distributions = 0.0
     cumulative_gp_cash_distributions = 0.0
@@ -383,21 +345,12 @@ def compute_waterfall_by_year(
         cumulative_gp_carry_cash += row["GP Carry Paid"]
         cumulative_clawback += row["Clawback"]
         row["Cumulative LP Distributed"] = cumulative_lp_distributions
-        row["Cumulative GP Cash Distributed"] = (
-            cumulative_gp_cash_distributions
-        )
-        row["GP Net After Clawback"] = (
-            cumulative_gp_carry_cash - cumulative_clawback
-        )
-        cash_distribution_target = (
-            row["Gross Dist"] - row["GP Carry Reserve Change"]
-        )
-        row["Cash Distribution Reconciliation"] = (
-            row["LP Distributed"] + row["GP Distributed"]
-        )
+        row["Cumulative GP Cash Distributed"] = cumulative_gp_cash_distributions
+        row["GP Net After Clawback"] = cumulative_gp_carry_cash - cumulative_clawback
+        cash_distribution_target = row["Gross Dist"] - row["GP Carry Reserve Change"]
+        row["Cash Distribution Reconciliation"] = row["LP Distributed"] + row["GP Distributed"]
         row["Cash Distribution Delta"] = (
-            cash_distribution_target
-            - row["Cash Distribution Reconciliation"]
+            cash_distribution_target - row["Cash Distribution Reconciliation"]
         )
         if abs(row["Cash Distribution Delta"]) > 1e-8:
             raise AssertionError(
@@ -408,11 +361,7 @@ def compute_waterfall_by_year(
         row["GP IRR"] = irr(gp_cf[:index])
         row["Fund IRR"] = irr(fund_cf[:index])
         paid_in = row["Cumulative LP Paid In"]
-        row["MOIC"] = (
-            row["Cumulative LP Distributed"] / paid_in
-            if paid_in > 0
-            else 0.0
-        )
+        row["MOIC"] = row["Cumulative LP Distributed"] / paid_in if paid_in > 0 else 0.0
 
     return results
 
@@ -447,12 +396,8 @@ def summarize_waterfall(
     last = waterfall[-1]
     return {
         "Cumulative LP Distributed": last["Cumulative LP Distributed"],
-        "Cumulative GP Cash Distributed": last[
-            "Cumulative GP Cash Distributed"
-        ],
-        "Cumulative GP Carry Allocated": sum(
-            row["GP Carry Allocated"] for row in waterfall
-        ),
+        "Cumulative GP Cash Distributed": last["Cumulative GP Cash Distributed"],
+        "Cumulative GP Carry Allocated": sum(row["GP Carry Allocated"] for row in waterfall),
         "Cumulative Mgmt Fee": sum(row["Mgmt Fee"] for row in waterfall),
         "Net IRR (LP)": last["LP IRR"],
         "Net IRR (GP)": last["GP IRR"],

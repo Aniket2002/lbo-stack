@@ -120,13 +120,7 @@ def build_canonical_sources_and_uses(a: DealAssumptions) -> Dict[str, Any]:
     oid = senior_debt * a.senior_oid_pct
     retained_cash = a.min_cash
 
-    total_uses = (
-        purchase_price
-        + transaction_fees
-        + financing_fees
-        + oid
-        + retained_cash
-    )
+    total_uses = purchase_price + transaction_fees + financing_fees + oid + retained_cash
     sponsor_equity = total_uses - total_financial_debt
 
     sources = {
@@ -216,10 +210,7 @@ def build_capex_schedule(a: DealAssumptions) -> list[float]:
 
 
 def build_da_schedule(a: DealAssumptions) -> list[float]:
-    return [
-        revenue * a.da_pct_of_revenue
-        for revenue in _projected_revenues(a)
-    ]
+    return [revenue * a.da_pct_of_revenue for revenue in _projected_revenues(a)]
 
 
 def build_wc_schedule(a: DealAssumptions) -> list[float]:
@@ -236,10 +227,7 @@ def build_enhanced_lbo_config(a: DealAssumptions) -> Dict[str, Any]:
     canonical = build_canonical_sources_and_uses(a)
     return {
         "enterprise_value": canonical["enterprise_value"],
-        "debt_pct": (
-            canonical["financial_debt_sources"]
-            / canonical["enterprise_value"]
-        ),
+        "debt_pct": (canonical["financial_debt_sources"] / canonical["enterprise_value"]),
         "senior_frac": a.senior_frac,
         "mezz_frac": a.mezz_frac,
         "revenue": a.revenue0,
@@ -346,14 +334,8 @@ def run_enhanced_base_case(
         icr = math.inf if cash_interest <= 1e-12 else ebitda / cash_interest
         leverage = net_debt / ebitda if ebitda > 0 else math.inf
         debt_service = cash_interest + row["Actual Amortization"]
-        pre_debt_service_cash = (
-            row["Operating Cash Generation"] + cash_interest
-        )
-        fcf_coverage = (
-            pre_debt_service_cash / debt_service
-            if debt_service > 1e-12
-            else math.inf
-        )
+        pre_debt_service_cash = row["Operating Cash Generation"] + cash_interest
+        fcf_coverage = pre_debt_service_cash / debt_service if debt_service > 1e-12 else math.inf
 
         icr_series.append(icr)
         leverage_series.append(leverage)
@@ -375,41 +357,20 @@ def run_enhanced_base_case(
             "Max_Leverage": max_leverage,
             "Max_LTV": max_leverage,
             "Min_FCF_Coverage": min_fcf_coverage,
-            "ICR_Headroom": (
-                min_icr - a.icr_hurdle
-                if a.icr_hurdle is not None
-                else math.nan
-            ),
+            "ICR_Headroom": (min_icr - a.icr_hurdle if a.icr_hurdle is not None else math.nan),
             "Leverage_Headroom": (
-                a.leverage_hurdle - max_leverage
-                if a.leverage_hurdle is not None
-                else math.nan
+                a.leverage_hurdle - max_leverage if a.leverage_hurdle is not None else math.nan
             ),
             "FCF_Headroom": (
-                min_fcf_coverage - a.fcf_hurdle
-                if a.fcf_hurdle is not None
-                else math.nan
+                min_fcf_coverage - a.fcf_hurdle if a.fcf_hurdle is not None else math.nan
             ),
-            "ICR_Breach": (
-                a.icr_hurdle is not None and min_icr < a.icr_hurdle
-            ),
-            "Leverage_Breach": (
-                a.leverage_hurdle is not None
-                and max_leverage > a.leverage_hurdle
-            ),
-            "LTV_Breach": (
-                a.leverage_hurdle is not None
-                and max_leverage > a.leverage_hurdle
-            ),
-            "FCF_Breach": (
-                a.fcf_hurdle is not None
-                and min_fcf_coverage < a.fcf_hurdle
-            ),
+            "ICR_Breach": (a.icr_hurdle is not None and min_icr < a.icr_hurdle),
+            "Leverage_Breach": (a.leverage_hurdle is not None and max_leverage > a.leverage_hurdle),
+            "LTV_Breach": (a.leverage_hurdle is not None and max_leverage > a.leverage_hurdle),
+            "FCF_Breach": (a.fcf_hurdle is not None and min_fcf_coverage < a.fcf_hurdle),
             "Debt_Roll_Forward_Max_Delta": max(debt_deltas, default=0.0),
             "Cash_Roll_Forward_Max_Delta": max(cash_deltas, default=0.0),
-            "Sources_Equals_Uses": build_canonical_sources_and_uses(a)[
-                "sources_equals_uses"
-            ],
+            "Sources_Equals_Uses": build_canonical_sources_and_uses(a)["sources_equals_uses"],
         }
     )
     return results, metrics
@@ -428,19 +389,10 @@ def build_exit_equity_bridge(
     final_debt = float(final_year["Closing Debt"])
     final_cash = float(final_year["Ending Cash"])
 
-    exit_equity_value = (
-        exit_ev
-        - sale_costs
-        - final_debt
-        + final_cash
-    )
+    exit_equity_value = exit_ev - sale_costs - final_debt + final_cash
 
     raw_metric_equity = metrics.get("Equity Value", math.nan)
-    metric_equity = (
-        float(raw_metric_equity)
-        if raw_metric_equity is not None
-        else math.nan
-    )
+    metric_equity = float(raw_metric_equity) if raw_metric_equity is not None else math.nan
 
     if math.isfinite(metric_equity) and not math.isclose(
         exit_equity_value,
@@ -536,10 +488,7 @@ def build_deleveraging_walk(  # pragma: no cover
         "leverage_walk": rows,
         "starting_leverage": rows[0]["net_debt_ebitda"],
         "ending_leverage": rows[-1]["net_debt_ebitda"],
-        "total_deleveraging": (
-            rows[0]["net_debt_ebitda"]
-            - rows[-1]["net_debt_ebitda"]
-        ),
+        "total_deleveraging": (rows[0]["net_debt_ebitda"] - rows[-1]["net_debt_ebitda"]),
     }
 
 
@@ -579,12 +528,8 @@ def enhanced_sensitivity_grid(a: DealAssumptions) -> pd.DataFrame:  # pragma: no
                 **{
                     **a.__dict__,
                     "exit_ev_ebitda": exit_multiple,
-                    "ebitda_margin_start": (
-                        a.ebitda_margin_start + margin_delta
-                    ),
-                    "ebitda_margin_end": (
-                        a.ebitda_margin_end + margin_delta
-                    ),
+                    "ebitda_margin_start": (a.ebitda_margin_start + margin_delta),
+                    "ebitda_margin_end": (a.ebitda_margin_end + margin_delta),
                 }
             )
             _, metrics = run_enhanced_base_case(case)
@@ -658,22 +603,15 @@ def monte_carlo_analysis(
         else:
             raw_irr = metrics.get("IRR")
             irr_value = (
-                float(raw_irr)
-                if raw_irr is not None and math.isfinite(float(raw_irr))
-                else None
+                float(raw_irr) if raw_irr is not None and math.isfinite(float(raw_irr)) else None
             )
             equity_value = float(metrics.get("Equity Value", 0.0))
-            breached = bool(
-                metrics.get("ICR_Breach")
-                or metrics.get("Leverage_Breach")
-            )
+            breached = bool(metrics.get("ICR_Breach") or metrics.get("Leverage_Breach"))
             insolvent = False
 
         failed = bool(error)
         negative_equity = equity_value is not None and equity_value < 0
-        capital_loss = negative_equity or (
-            irr_value is not None and irr_value < 0
-        )
+        capital_loss = negative_equity or (irr_value is not None and irr_value < 0)
         success = (
             irr_value is not None
             and not breached
@@ -714,25 +652,15 @@ def monte_carlo_analysis(
 
     unconditional_irr_available = len(defined_irrs) == n
     unconditional_median = (
-        float(np.median(defined_irrs))
-        if unconditional_irr_available
-        else math.nan
+        float(np.median(defined_irrs)) if unconditional_irr_available else math.nan
     )
     unconditional_p10 = (
-        float(np.percentile(defined_irrs, 10))
-        if unconditional_irr_available
-        else math.nan
+        float(np.percentile(defined_irrs, 10)) if unconditional_irr_available else math.nan
     )
     unconditional_p90 = (
-        float(np.percentile(defined_irrs, 90))
-        if unconditional_irr_available
-        else math.nan
+        float(np.percentile(defined_irrs, 90)) if unconditional_irr_available else math.nan
     )
-    unconditional_std = (
-        float(np.std(defined_irrs))
-        if unconditional_irr_available
-        else math.nan
-    )
+    unconditional_std = float(np.std(defined_irrs)) if unconditional_irr_available else math.nan
 
     return {
         "Seed": seed,
@@ -760,33 +688,16 @@ def monte_carlo_analysis(
         "P10_IRR": unconditional_p10,
         "P90_IRR": unconditional_p90,
         "Std_IRR": unconditional_std,
-        "Median_Defined_IRR": (
-            float(np.median(defined_irrs)) if defined_irrs else math.nan
-        ),
-        "P10_Defined_IRR": (
-            float(np.percentile(defined_irrs, 10))
-            if defined_irrs
-            else math.nan
-        ),
-        "P90_Defined_IRR": (
-            float(np.percentile(defined_irrs, 90))
-            if defined_irrs
-            else math.nan
-        ),
-        "Median_Success_IRR": (
-            float(np.median(successful_irrs))
-            if successful_irrs
-            else math.nan
-        ),
+        "Median_Defined_IRR": (float(np.median(defined_irrs)) if defined_irrs else math.nan),
+        "P10_Defined_IRR": (float(np.percentile(defined_irrs, 10)) if defined_irrs else math.nan),
+        "P90_Defined_IRR": (float(np.percentile(defined_irrs, 90)) if defined_irrs else math.nan),
+        "Median_Success_IRR": (float(np.median(successful_irrs)) if successful_irrs else math.nan),
         "Priors": {
             "growth_sigma": assumptions["growth_sigma"],
             "margin_sigma": assumptions["margin_sigma"],
             "multiple_sigma": assumptions["multiple_sigma"],
         },
-        "SuccessDef": (
-            "No covenant breach or insolvency, positive exit equity, "
-            "and IRR >= 8%"
-        ),
+        "SuccessDef": ("No covenant breach or insolvency, positive exit equity, and IRR >= 8%"),
         "IRRStatsDef": (
             "Defined-path statistics include every scenario with a "
             "mathematically defined IRR. Failed and undefined-return paths "
@@ -804,9 +715,13 @@ def build_monte_carlo_projections(a: DealAssumptions) -> Dict[str, Any]:  # prag
         path = []
         for year in range(1, a.years + 1):
             target = base_ebitda * (1.0 + a.rev_growth_geo) ** year
-            current = 0.8 * current + 0.2 * target + rng.normal(
-                0.0,
-                base_ebitda * 0.10,
+            current = (
+                0.8 * current
+                + 0.2 * target
+                + rng.normal(
+                    0.0,
+                    base_ebitda * 0.10,
+                )
             )
             path.append(max(current, base_ebitda * 0.30))
         scenarios.append(path)
@@ -992,16 +907,8 @@ def plot_sources_and_uses(  # pragma: no cover
     out_path: Optional[str] = None,
 ):
     schedule = build_canonical_sources_and_uses(a)
-    sources = {
-        key: value
-        for key, value in schedule["sources"].items()
-        if key != "Total Sources"
-    }
-    uses = {
-        key: value
-        for key, value in schedule["uses"].items()
-        if key != "Total Uses"
-    }
+    sources = {key: value for key, value in schedule["sources"].items() if key != "Total Sources"}
+    uses = {key: value for key, value in schedule["uses"].items() if key != "Total Uses"}
 
     fig, axes = plt.subplots(1, 2, figsize=(12, 5))
     axes[0].bar(sources.keys(), sources.values())
@@ -1029,14 +936,10 @@ def plot_sensitivity_heatmap(
     )
 
     axis.set_xticks(range(len(display.columns)))
-    axis.set_xticklabels(
-        [f"{float(value):.1f}x" for value in display.columns]
-    )
+    axis.set_xticklabels([f"{float(value):.1f}x" for value in display.columns])
 
     axis.set_yticks(range(len(display.index)))
-    axis.set_yticklabels(
-        [f"{float(value):.1%}" for value in display.index]
-    )
+    axis.set_yticklabels([f"{float(value):.1%}" for value in display.index])
 
     axis.set_xlabel("Exit multiple")
     axis.set_ylabel("Terminal EBITDA margin")
@@ -1046,15 +949,9 @@ def plot_sensitivity_heatmap(
 
     for row_index in range(numeric_values.shape[0]):
         for column_index in range(numeric_values.shape[1]):
-            value = float(
-                numeric_values[row_index, column_index]
-            )
+            value = float(numeric_values[row_index, column_index])
 
-            text = (
-                "n/a"
-                if not math.isfinite(value)
-                else f"{value:.1f}%"
-            )
+            text = "n/a" if not math.isfinite(value) else f"{value:.1f}%"
 
             axis.text(
                 column_index,
